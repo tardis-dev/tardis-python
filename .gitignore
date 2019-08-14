@@ -1,0 +1,8 @@
+.coverage
+_build
+.DS_Store
+.vscode
+__pycache__
+build/
+dist/
+tardis_client.egg-info
