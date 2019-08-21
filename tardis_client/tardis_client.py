@@ -4,7 +4,7 @@ import logging
 import json
 import os
 import tempfile
-
+import shutil
 from time import time
 from typing import List
 from collections import namedtuple
@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from tardis_client.consts import EXCHANGES, EXCHANGE_CHANNELS_INFO
 from tardis_client.handy import get_slice_cache_path
 from tardis_client.channel import Channel
+from tardis_client.worker import fetch_data_to_replay
 
 Response = namedtuple("Response", ["local_timestamp", "message"])
 
@@ -47,19 +48,38 @@ class TardisClient:
             filters,
         )
 
+        loop = asyncio.get_running_loop()
+
+        fetch_data_future = loop.run_in_executor(
+            None,
+            fetch_data_to_replay,
+            exchange,
+            from_date,
+            to_date,
+            filters,
+            self.endpoint,
+            self.cache_dir,
+            self.api_key,
+        )
+
         while current_slice_date < to_date:
             current_slice_path = None
             while current_slice_path is None:
+                # this allows other tasks to run as suspends current task
+                await asyncio.sleep(0)
                 path_to_check = get_slice_cache_path(self.cache_dir, exchange, current_slice_date, filters)
 
                 self.logger.debug("getting slice: %s", path_to_check)
 
+                if fetch_data_future.done() and fetch_data_future.exception():
+                    raise fetch_data_future.exception()
+
                 if os.path.isfile(path_to_check):
                     current_slice_path = path_to_check
                 else:
-                    # todo check process erorors
                     self.logger.debug("waiting for slice: %s", path_to_check)
                     await asyncio.sleep(0.3)
+
             messages_count = 0
             with gzip.open(current_slice_path, "rb") as file:
                 for line in file:
@@ -79,7 +99,6 @@ class TardisClient:
             current_slice_date = current_slice_date + timedelta(seconds=60)
 
         end_time = time()
-
         self.logger.debug(
             "replay for '%s' exchange finished from: %s, to: %s, filters: %s, total time: %s seconds",
             exchange,
@@ -88,6 +107,9 @@ class TardisClient:
             filters,
             end_time - start_time,
         )
+
+    def clear_cache(self):
+        shutil.rmtree(self.cache_dir)
 
     def _validate_payload(self, exchange, from_date, to_date, filters):
         if exchange not in EXCHANGES:
