@@ -128,7 +128,7 @@ class TardisClient:
     def _validate_payload(self, exchange, from_date, to_date, filters):
         if exchange not in EXCHANGES:
             raise ValueError(
-                f"Invalid 'exchange' argument: {exchange}. Please provide one of the following exchanges: {sEXCHANGES.join(', ')}."
+                f"Invalid 'exchange' argument: {exchange}. Please provide one of the following exchanges: {EXCHANGES.join(', ')}."
             )
 
         if from_date is None or self._try_parse_as_iso_date(from_date) is False:
