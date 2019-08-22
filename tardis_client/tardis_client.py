@@ -30,75 +30,83 @@ class TardisClient:
 
         self.logger.debug("initialized with: %s", {"endpoint": endpoint, "cache_dir": cache_dir, "api_key": api_key})
 
-    async def replay(
-        self, exchange: str, from_date: str, to_date: str, filters: List[Channel] = [], decode_response=True
-    ):
-
+    async def replay(self, exchange: str, from_date: str, to_date: str, filters: List[Channel] = [], decode_response=True):
+        # start with validation of provided args
         self._validate_payload(exchange, from_date, to_date, filters)
+
         from_date = datetime.fromisoformat(from_date)
         to_date = datetime.fromisoformat(to_date)
         current_slice_date = from_date
         start_time = time()
 
         self.logger.debug(
-            "replay for '%s' exchange started from: %s, to: %s, filters: %s",
-            exchange,
-            from_date.isoformat(),
-            to_date.isoformat(),
-            filters,
+            "replay for '%s' exchange started from: %s, to: %s, filters: %s", exchange, from_date.isoformat(), to_date.isoformat(), filters
         )
 
         loop = asyncio.get_running_loop()
-
+        # fetch and cache data needed to replay in thread pool executor
         fetch_data_future = loop.run_in_executor(
-            None,
-            fetch_data_to_replay,
-            exchange,
-            from_date,
-            to_date,
-            filters,
-            self.endpoint,
-            self.cache_dir,
-            self.api_key,
+            None, fetch_data_to_replay, exchange, from_date, to_date, filters, self.endpoint, self.cache_dir, self.api_key
         )
 
+        # iterate over every minute in <=from_date,to_date> date range
+        # get cached 'slice' (single minute) files, decompress
+        # and return each line as Response - using yield
         while current_slice_date < to_date:
             current_slice_path = None
             while current_slice_path is None:
-                # this allows other tasks to run as suspends current task
+                # this allows other tasks to run (suspends current task)
                 await asyncio.sleep(0)
                 path_to_check = get_slice_cache_path(self.cache_dir, exchange, current_slice_date, filters)
 
                 self.logger.debug("getting slice: %s", path_to_check)
 
+                # always check if data fetching future has finished prematurely
+                #  with exception (network issue, auth issue etc) and if it did raise such exception
+                # and stop the loop
                 if fetch_data_future.done() and fetch_data_future.exception():
                     raise fetch_data_future.exception()
 
+                # if data for requested date already exists we can proceed further
                 if os.path.isfile(path_to_check):
                     current_slice_path = path_to_check
+                # otherwise if data for requested date is not ready yet (cached) wait 100ms and check again
                 else:
                     self.logger.debug("waiting for slice: %s", path_to_check)
-                    await asyncio.sleep(0.3)
+                    await asyncio.sleep(0.1)
 
             messages_count = 0
+
+            # open data file as binary and read line by line
             with gzip.open(current_slice_path, "rb") as file:
                 for line in file:
                     if len(line) == 0:
                         continue
                     messages_count = messages_count + 1
+
+                    # local timestamps provided by the API always have 28 characters
+                    # eg 2019-08-01T08:52:00.0324272Z
+                    # let's split each line to date and message part and yield them as Response
                     if decode_response:
-                        # TODO comment about parsing date
-                        timestamp = datetime.strptime(
-                            line[0 : DATE_MESSAGE_SPLIT_INDEX - 2].decode("utf-8"), "%Y-%m-%dT%H:%M:%S.%f"
-                        )
+                        # if returning decoded response we need to convert:
+                        # timestamp returned by the API to Python datetime
+                        # message returned by the API to JSON object
+
+                        # since python datetime has microsecond precision and provided timestamp has 100ns precision
+                        # we ignore last two characters of timestmap provided by the API (last character is Z)
+                        # so we can decode it as python datetime
+                        timestamp = datetime.strptime(line[0 : DATE_MESSAGE_SPLIT_INDEX - 2].decode("utf-8"), "%Y-%m-%dT%H:%M:%S.%f")
+
                         yield Response(timestamp, json.loads(line[DATE_MESSAGE_SPLIT_INDEX + 1 :]))
                     else:
                         yield Response(line[0:DATE_MESSAGE_SPLIT_INDEX], line[DATE_MESSAGE_SPLIT_INDEX + 1 :])
 
             self.logger.debug("processed slice: %s, messages count: %i", current_slice_path, messages_count)
+
             current_slice_date = current_slice_date + timedelta(seconds=60)
 
         end_time = time()
+
         self.logger.debug(
             "replay for '%s' exchange finished from: %s, to: %s, filters: %s, total time: %s seconds",
             exchange,
@@ -149,12 +157,8 @@ class TardisClient:
                 if filter.symbols is None:
                     continue
 
-                if isinstance(filter.symbols, list) is False or any(
-                    isinstance(symbol, str) == False for symbol in filter.symbols
-                ):
-                    raise ValueError(
-                        f"Invalid 'symbols[]' argument: {filter.symbols}. Please provide list of symbol strings."
-                    )
+                if isinstance(filter.symbols, list) is False or any(isinstance(symbol, str) == False for symbol in filter.symbols):
+                    raise ValueError(f"Invalid 'symbols[]' argument: {filter.symbols}. Please provide list of symbol strings.")
 
     def _try_parse_as_iso_date(self, date_string):
         try:

@@ -8,6 +8,7 @@ from functools import reduce
 def get_slice_cache_path(cache_dir, exchange, date, filters):
     return os.path.join(cache_dir, "feeds", exchange, get_filters_hash(filters), format_date_to_path(date)) + ".json.gz"
 
+
 def get_filters_hash(filters):
     # it not filters were provided or were empty return empty list hash
     if filters is None or len(filters) == 0:
