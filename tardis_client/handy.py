@@ -14,8 +14,6 @@ def get_filters_hash(filters):
     if filters is None or len(filters) == 0:
         return hashlib.sha256(json.dumps([]).encode("utf-8")).hexdigest()
 
-    # sort filters in place to improve local disk cache ratio - same hash
-    filters.sort(key=lambda filter: filter.name)
     # convert fitlers to dictionary so can be json serialized (use the same names as other clients - channel, symbols)
     filters_serializable = [{"channel": filter.name, "symbols": filter.symbols} for filter in filters]
     filters_serialized = json.dumps(filters_serializable, separators=(",", ":"))

@@ -39,6 +39,10 @@ class TardisClient:
         current_slice_date = from_date
         start_time = time()
 
+        # sort filters to improve local disk cache ratio - same filters same has
+        if filters is not None:
+            filters.sort(key=lambda filter: filter.name)
+
         self.logger.debug(
             "replay for '%s' exchange started from: %s, to: %s, filters: %s",
             exchange,
@@ -112,6 +116,9 @@ class TardisClient:
             current_slice_date = current_slice_date + timedelta(seconds=60)
 
         end_time = time()
+
+        # always await on fetch_data_future as it theoreticaly could not finish yet
+        await fetch_data_future
 
         self.logger.debug(
             "replay for '%s' exchange finished from: %s, to: %s, filters: %s, total time: %s seconds",
