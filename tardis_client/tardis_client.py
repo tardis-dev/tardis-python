@@ -40,7 +40,11 @@ class TardisClient:
         start_time = time()
 
         self.logger.debug(
-            "replay for '%s' exchange started from: %s, to: %s, filters: %s", exchange, from_date.isoformat(), to_date.isoformat(), filters
+            "replay for '%s' exchange started from: %s, to: %s, filters: %s",
+            exchange,
+            from_date.isoformat(),
+            to_date.isoformat(),
+            filters,
         )
 
         loop = asyncio.get_running_loop()
@@ -95,7 +99,9 @@ class TardisClient:
                         # since python datetime has microsecond precision and provided timestamp has 100ns precision
                         # we ignore last two characters of timestmap provided by the API (last character is Z)
                         # so we can decode it as python datetime
-                        timestamp = datetime.strptime(line[0 : DATE_MESSAGE_SPLIT_INDEX - 2].decode("utf-8"), "%Y-%m-%dT%H:%M:%S.%f")
+                        timestamp = datetime.strptime(
+                            line[0 : DATE_MESSAGE_SPLIT_INDEX - 2].decode("utf-8"), "%Y-%m-%dT%H:%M:%S.%f"
+                        )
 
                         yield Response(timestamp, json.loads(line[DATE_MESSAGE_SPLIT_INDEX + 1 :]))
                     else:
@@ -127,17 +133,20 @@ class TardisClient:
 
         if from_date is None or self._try_parse_as_iso_date(from_date) is False:
             raise ValueError(
-                f"Invalid 'from_date' argument: {from_date}. Please provide valid ISO date string. https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat"
+                f"""Invalid 'from_date' argument: {from_date}. Please provide valid ISO date string.
+                https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat"""
             )
 
         if to_date is None or self._try_parse_as_iso_date(to_date) is False:
             raise ValueError(
-                f"Invalid 'to_date' argument: {to_date}. Please provide valid ISO date string. https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat"
+                f"""Invalid 'to_date' argument: {to_date}. Please provide valid ISO date string.
+                https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat"""
             )
 
         if datetime.fromisoformat(from_date) >= datetime.fromisoformat(to_date):
             raise ValueError(
-                "Invalid 'from_date' and 'to_date' arguments combination. Please provide 'to_date' date string that is later than 'from_date'."
+                f""" 'from_date' and 'to_date' arguments combination.
+                Please provide 'to_date' date string that is later than 'from_date'."""
             )
 
         if filters is None:
@@ -157,8 +166,12 @@ class TardisClient:
                 if filter.symbols is None:
                     continue
 
-                if isinstance(filter.symbols, list) is False or any(isinstance(symbol, str) == False for symbol in filter.symbols):
-                    raise ValueError(f"Invalid 'symbols[]' argument: {filter.symbols}. Please provide list of symbol strings.")
+                if isinstance(filter.symbols, list) is False or any(
+                    isinstance(symbol, str) == False for symbol in filter.symbols
+                ):
+                    raise ValueError(
+                        f"Invalid 'symbols[]' argument: {filter.symbols}. Please provide list of symbol strings."
+                    )
 
     def _try_parse_as_iso_date(self, date_string):
         try:
