@@ -88,7 +88,8 @@ class TardisClient:
             # open data file as binary and read line by line
             with gzip.open(current_slice_path, "rb") as file:
                 for line in file:
-                    if len(line) == 0:
+                    # each line ends with \n byte, so in order to exclude empty lines (\n only) we must check if line length is < 1
+                    if len(line) <= 1:
                         continue
                     messages_count = messages_count + 1
 
