@@ -98,12 +98,12 @@ tardis_client = TardisClient(cache_dir="./cache")
 
     #### `replay` method parameters:
 
-    | name                 | type                        | default value | description                                                                                                                                                                                  |
-    | -------------------- | --------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-    | `exchange`           | `string`                    | -             | requested exchange name - see [allowed exchanges](https://github.com/tardis-dev/python-client/blob/master/tardis_client/consts.py#L1) list                                                   |
-    | `from_date`          | `string`                    | -             | requested UTC start date of data feed - [valid ISO date string](https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat), eg: `2019-04-05` or `2019-05-05T00:00:00`      |
-    | `to_date`            | `string`                    | -             | requested UTC end date of data feed - [valid ISO date string](https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat), eg: `2019-04-05` or `2019-05-05T00:00:00`        |
-    | `filters` (optional) | [`List[Channel]`](#channel) | []            | optional filters of requested data feed. Use [/exchanges/:exchange](https://docs.tardis.dev/api#exchanges-exchange) API call to get allowed channel names and symbols for requested exchange |
+    | name                 | type                              | default value | description                                                                                                                                                                                  |
+    | -------------------- | --------------------------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `exchange`           | `string`                          | -             | requested exchange name - see [allowed exchanges](https://github.com/tardis-dev/python-client/blob/master/tardis_client/consts.py#L1) list                                                   |
+    | `from_date`          | `string`                          | -             | requested UTC start date of data feed - [valid ISO date string](https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat), eg: `2019-04-05` or `2019-05-05T00:00:00`      |
+    | `to_date`            | `string`                          | -             | requested UTC end date of data feed - [valid ISO date string](https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat), eg: `2019-04-05` or `2019-05-05T00:00:00`        |
+    | `filters` (optional) | [`List[Channel]`](#channel-class) | []            | optional filters of requested data feed. Use [/exchanges/:exchange](https://docs.tardis.dev/api#exchanges-exchange) API call to get allowed channel names and symbols for requested exchange |
 
     ##### `Channel` class
 
