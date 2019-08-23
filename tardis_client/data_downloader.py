@@ -17,11 +17,7 @@ from tardis_client.handy import get_slice_cache_path
 logger = logging.getLogger(__name__)
 
 
-def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key):
-    asyncio.run(_fetch_data_async(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key))
-
-
-async def _fetch_data_async(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key):
+async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key):
     timeout = aiohttp.ClientTimeout(total=60)
     headers = {"Authorization": f"Bearer {api_key}" if api_key else ""}
 
@@ -101,8 +97,11 @@ async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date
             await _fetch_and_cache_slice(session, url=fetch_url, cache_path=cache_path)
             break
 
+        except asyncio.CancelledError:
+            break
+
         except Exception as ex:
-            if attempts == MAX_ATTEMPTS:
+            if attempts == MAX_ATTEMPTS or isinstance(ex, RuntimeError):
                 raise ex
 
             if isinstance(ex, urllib.error.HTTPError):
@@ -119,10 +118,7 @@ async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date
             if too_many_requests:
                 # when too many requests error received wait longer than normal
                 next_attempts_delay += 3 * attempts
-
-            logger.debug(
-                "fetchAndCacheSlice error: %s, next attempt delay: %s s, path: %s", ex, next_attempts_delay, cache_path
-            )
+            logger.debug("fetchAndCacheSlice error: %s, next attempt delay: %is, path: %s", ex, next_attempts_delay, cache_path)
 
             await asyncio.sleep(next_attempts_delay)
 

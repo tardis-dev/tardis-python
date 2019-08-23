@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import shutil
+
 from time import time
 from typing import List
 from collections import namedtuple
@@ -13,7 +14,7 @@ from datetime import datetime, timedelta
 from tardis_client.consts import EXCHANGES, EXCHANGE_CHANNELS_INFO
 from tardis_client.handy import get_slice_cache_path
 from tardis_client.channel import Channel
-from tardis_client.worker import fetch_data_to_replay
+from tardis_client.data_downloader import fetch_data_to_replay
 
 Response = namedtuple("Response", ["local_timestamp", "message"])
 
@@ -51,10 +52,9 @@ class TardisClient:
             filters,
         )
 
-        loop = asyncio.get_running_loop()
-        # fetch and cache data needed to replay in thread pool executor
-        fetch_data_future = loop.run_in_executor(
-            None, fetch_data_to_replay, exchange, from_date, to_date, filters, self.endpoint, self.cache_dir, self.api_key
+        # start fetch_data_to_replay task
+        fetch_data_task = asyncio.create_task(
+            fetch_data_to_replay(exchange, from_date, to_date, filters, self.endpoint, self.cache_dir, self.api_key)
         )
 
         # iterate over every minute in <=from_date,to_date> date range
@@ -69,11 +69,11 @@ class TardisClient:
 
                 self.logger.debug("getting slice: %s", path_to_check)
 
-                # always check if data fetching future has finished prematurely
+                # always check if data fetching task has finished prematurely
                 #  with exception (network issue, auth issue etc) and if it did raise such exception
                 # and stop the loop
-                if fetch_data_future.done() and fetch_data_future.exception():
-                    raise fetch_data_future.exception()
+                if fetch_data_task.done() and fetch_data_task.exception():
+                    raise fetch_data_task.exception()
 
                 # if data for requested date already exists we can proceed further
                 if os.path.isfile(path_to_check):
@@ -117,8 +117,8 @@ class TardisClient:
 
         end_time = time()
 
-        # always await on fetch_data_future as it theoreticaly could not finish yet
-        await fetch_data_future
+        # always await on fetch_data_task as theoreticaly it could still be pending
+        await fetch_data_task
 
         self.logger.debug(
             "replay for '%s' exchange finished from: %s, to: %s, filters: %s, total time: %s seconds",
