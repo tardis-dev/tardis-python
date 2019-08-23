@@ -75,6 +75,9 @@ async def _fetch_data_if_not_cached(session, endpoint, cache_dir, exchange, from
     # fetch and cache slice only if it's not cached already
     if os.path.isfile(cache_path) == False:
         await _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path)
+        logger.debug("fetched data slice for date %s from the API and cached - %s", slice_date, cache_path)
+    else:
+        logger.debug("data slice for date %s already in local cache - %s", slice_date, cache_path)
 
 
 async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path):
@@ -118,7 +121,9 @@ async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date
             if too_many_requests:
                 # when too many requests error received wait longer than normal
                 next_attempts_delay += 3 * attempts
-            logger.debug("fetchAndCacheSlice error: %s, next attempt delay: %is, path: %s", ex, next_attempts_delay, cache_path)
+            logger.debug(
+                "_fetch_and_cache_slice error: %s, next attempt delay: %is, path: %s", ex, next_attempts_delay, cache_path
+            )
 
             await asyncio.sleep(next_attempts_delay)
 
