@@ -115,8 +115,8 @@ tardis_client = TardisClient(cache_dir="./cache")
     | `symbols` | `List[string]` | Use [/exchanges/:exchange](https://docs.tardis.dev/api#exchanges-exchange) API call to get allowed channel names and symbols for requested exchange |
 
     ```python
-        Channel(name="trade", symbols=["XBTUSD","ETHUSD"])
-        Channel("orderBookL2", ["XBTUSD"])
+    Channel(name="trade", symbols=["XBTUSD","ETHUSD"])
+    Channel("orderBookL2", ["XBTUSD"])
     ```
 
 ## FAQ
