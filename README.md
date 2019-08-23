@@ -86,7 +86,7 @@ tardis_client = TardisClient(cache_dir="./cache")
   tardis_client.clear_cache()
   ```
 
-- ### `tardis_client.replay(exchange, from_date, to_date, filters=[], decode_response=True)`
+- ### `tardis_client.replay(exchange, from_date, to_date, filters=[])`
 
   Replays historical market data messages for given replay arguments.
 
@@ -108,10 +108,11 @@ tardis_client = TardisClient(cache_dir="./cache")
     ##### `Channel` class
 
     `Channel` class constructor parameters.
-    | name | type | description |
-    | ---------------------- | -------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-    | `name` | `string` | Use [/exchanges/:exchange](https://docs.tardis.dev/api#exchanges-exchange) API call to get allowed channel names and symbols for requested exchange |
-    | `symbols`| `List[string]` | Use [/exchanges/:exchange](https://docs.tardis.dev/api#exchanges-exchange) API call to get allowed channel names and symbols for requested exchange |
+
+    | name      | type           | description                                                                                                                                         |
+    | --------- | -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+    | `name`    | `string`       | Use [/exchanges/:exchange](https://docs.tardis.dev/api#exchanges-exchange) API call to get allowed channel names and symbols for requested exchange |
+    | `symbols` | `List[string]` | Use [/exchanges/:exchange](https://docs.tardis.dev/api#exchanges-exchange) API call to get allowed channel names and symbols for requested exchange |
 
     ```python
         Channel(name="trade", symbols=["XBTUSD","ETHUSD"])
