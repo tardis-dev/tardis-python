@@ -109,3 +109,7 @@ EXCHANGE_CHANNELS_INFO = {
     "bitfinex": BITFINEX_CHANNELS,
     "ftx": FTX_CHANNELS,
 }
+
+
+ASK = "ask"
+BID = "bid"
