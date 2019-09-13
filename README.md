@@ -43,6 +43,7 @@ async def replay():
 
 asyncio.run(replay())
 ```
+[![Try on repl.it](https://repl-badge.jajoosam.repl.co/try.png)](https://repl.it/@TardisThad/tardis-python-client-example)
 
 ## API
 
