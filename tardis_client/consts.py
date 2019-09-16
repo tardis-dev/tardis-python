@@ -1,16 +1,20 @@
 EXCHANGES = [
     "bitmex",
-    "coinbase",
-    "deribit",
-    "cryptofacilities",
-    "bitstamp",
-    "kraken",
-    "okex",
     "binance",
+    "binance-futures",
+    "deribit",
+    "bitstamp",
+    "coinbase",
+    "cryptofacilities",
+    "kraken",
+    "bitfinex",
+    "bitfinex-derivatives",
+    "okex",
     "binance-jersey",
     "binance-dex",
-    "bitfinex",
     "ftx",
+    "gemini",
+    "bitflyer",
 ]
 
 BINANCE_CHANNELS = ["trade", "ticker", "depth", "miniTicker", "depthSnapshot"]
@@ -95,6 +99,14 @@ CRYPTOFACILITIES_CHANNELS = ["trade", "trade_snapshot", "book", "book_snapshot",
 
 FTX_CHANNELS = ["orderbook", "trades"]
 
+GEMINI_CHANNELS = ["trade", "l2_updates", "auction_open", "auction_indicative", "auction_result"]
+
+BITFLYER_CHANNELS = ["lightning_board_snapshot", "lightning_board", "lightning_ticker", "lightning_executions"]
+
+BINANCE_FUTURES_CHANNELS = ["aggTrade", "ticker", "depth", "markPrice", "depthSnapshot"]
+
+BITFINEX_DERIV_CHANNELS = ["trades", "book", "status"]
+
 EXCHANGE_CHANNELS_INFO = {
     "bitmex": BITMEX_CHANNELS,
     "coinbase": COINBASE_CHANNELS,
@@ -108,6 +120,10 @@ EXCHANGE_CHANNELS_INFO = {
     "binance-dex": BINANCE_DEX_CHANNELS,
     "bitfinex": BITFINEX_CHANNELS,
     "ftx": FTX_CHANNELS,
+    "gemini": GEMINI_CHANNELS,
+    "bitflyer": BITFLYER_CHANNELS,
+    "binance-futures": BINANCE_FUTURES_CHANNELS,
+    "bitfinex-derivatives": BITFINEX_DERIV_CHANNELS,
 }
 
 
