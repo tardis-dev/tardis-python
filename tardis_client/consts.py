@@ -1,26 +1,33 @@
 EXCHANGES = [
     "bitmex",
+    "deribit",
     "binance",
     "binance-futures",
-    "deribit",
+    "ftx",
+    "okex",
+    "okex-futures",
+    "okex-swap",
+    "huobi",
+    "huobi-dm",
+    "bitflyer",
     "bitstamp",
     "coinbase",
     "cryptofacilities",
     "kraken",
+    "gemini",
     "bitfinex",
     "bitfinex-derivatives",
-    "okex",
-    "binance-jersey",
     "binance-dex",
-    "ftx",
-    "gemini",
-    "bitflyer",
+    "binance-jersey",
+    "binance-us",
+    "huobi-us",
+    "bybit",
+    "okcoin",
+    "hitbtc",
 ]
 
-BINANCE_CHANNELS = ["trade", "ticker", "depth", "miniTicker", "depthSnapshot"]
-
-BINANCE_DEX_CHANNELS = ["trades", "marketDiff", "kline_1m", "ticker", "depthSnapshot"]
-
+BINANCE_CHANNELS = ["trade", "aggTrade", "ticker", "depth", "depthSnapshot", "bookTicker"]
+BINANCE_DEX_CHANNELS = ["trades", "marketDiff", "depthSnapshot"]
 BITFINEX_CHANNELS = ["trades", "book"]
 
 BITMEX_CHANNELS = [
@@ -77,22 +84,29 @@ DERIBIT_CHANNELS = [
 
 KRAKEN_CHANNELS = ["ticker", "trade", "book", "spread"]
 
-OKEX_CHANNELS = [
-    "spot/ticker",
-    "spot/trade",
-    "spot/depth",
-    "swap/ticker",
-    "swap/trade",
-    "swap/depth",
-    "swap/funding_rate",
-    "swap/price_range",
-    "swap/mark_price",
-    "futures/ticker",
+OKEX_CHANNELS = ["spot/trade", "spot/depth", "spot/ticker"]
+
+OKCOIN_CHANNELS = ["spot/trade", "spot/depth", "spot/ticker"]
+
+OKEX_FUTURES_CHANNELS = [
     "futures/trade",
     "futures/depth",
+    "futures/depth_l2_tbt",
+    "futures/ticker",
     "futures/price_range",
     "futures/mark_price",
     "futures/estimated_price",
+    "index/ticker",
+]
+
+OKEX_SWAP_CHANNELS = [
+    "swap/trade",
+    "swap/depth",
+    "swap/ticker",
+    "swap/funding_rate",
+    "swap/price_range",
+    "swap/mark_price",
+    "index/ticker",
 ]
 
 CRYPTOFACILITIES_CHANNELS = ["trade", "trade_snapshot", "book", "book_snapshot", "ticker", "heartbeat"]
@@ -103,9 +117,19 @@ GEMINI_CHANNELS = ["trade", "l2_updates", "auction_open", "auction_indicative", 
 
 BITFLYER_CHANNELS = ["lightning_board_snapshot", "lightning_board", "lightning_ticker", "lightning_executions"]
 
-BINANCE_FUTURES_CHANNELS = ["aggTrade", "ticker", "depth", "markPrice", "depthSnapshot"]
+BINANCE_FUTURES_CHANNELS = ["trade", "aggTrade", "ticker", "depth", "markPrice", "depthSnapshot", "bookTicker", "forceOrder"]
 
 BITFINEX_DERIV_CHANNELS = ["trades", "book", "status"]
+
+HUOBI_CHANNELS = ["depth", "detail", "trade", "bbo"]
+
+HUOBI_US_CHANNELS = ["depth", "detail", "trade"]
+
+HUOBI_DM_CHANNELS = ["depth", "detail", "trade"]
+
+BYBIT_CHANNELS = ["trade", "instrument_info", "orderBookL2_25", "insurance"]
+
+HITBTC_CHANNELS = ["snapshotTrades", "updateTrades", "snapshotOrderbook", "updateOrderbook"]
 
 EXCHANGE_CHANNELS_INFO = {
     "bitmex": BITMEX_CHANNELS,
@@ -115,15 +139,24 @@ EXCHANGE_CHANNELS_INFO = {
     "bitstamp": BITSTAMP_CHANNELS,
     "kraken": KRAKEN_CHANNELS,
     "okex": OKEX_CHANNELS,
+    "okex-swap": OKEX_SWAP_CHANNELS,
+    "okex-futures": OKEX_FUTURES_CHANNELS,
     "binance": BINANCE_CHANNELS,
     "binance-jersey": BINANCE_CHANNELS,
     "binance-dex": BINANCE_DEX_CHANNELS,
+    "binance-us": BINANCE_CHANNELS,
     "bitfinex": BITFINEX_CHANNELS,
     "ftx": FTX_CHANNELS,
     "gemini": GEMINI_CHANNELS,
     "bitflyer": BITFLYER_CHANNELS,
     "binance-futures": BINANCE_FUTURES_CHANNELS,
     "bitfinex-derivatives": BITFINEX_DERIV_CHANNELS,
+    "huobi": HUOBI_CHANNELS,
+    "huobi-dm": HUOBI_DM_CHANNELS,
+    "huobi-us": HUOBI_US_CHANNELS,
+    "bybit": BYBIT_CHANNELS,
+    "okcoin": OKCOIN_CHANNELS,
+    "hitbtc": HITBTC_CHANNELS,
 }
 
 
