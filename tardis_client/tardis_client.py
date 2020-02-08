@@ -1,7 +1,7 @@
 import asyncio
 import gzip
 import logging
-import json
+import json as default_json
 import os
 import tempfile
 import shutil
@@ -15,7 +15,7 @@ from tardis_client.consts import EXCHANGES, EXCHANGE_CHANNELS_INFO
 from tardis_client.handy import get_slice_cache_path
 from tardis_client.channel import Channel
 from tardis_client.data_downloader import fetch_data_to_replay
-from tardis_client.reconstructors import get_market_reconstructor 
+from tardis_client.reconstructors import get_market_reconstructor
 from tardis_client.reconstructors.market_reconstructor import MarketResponse
 
 Response = namedtuple("Response", ["local_timestamp", "message"])
@@ -33,7 +33,15 @@ class TardisClient:
 
         self.logger.debug("initialized with: %s", {"endpoint": endpoint, "cache_dir": cache_dir, "api_key": api_key})
 
-    async def replay(self, exchange: str, from_date: str, to_date: str, filters: List[Channel] = [], decode_response=True):
+    async def replay(
+        self,
+        exchange: str,
+        from_date: str,
+        to_date: str,
+        filters: List[Channel] = [],
+        decode_response=True,
+        json=default_json,
+    ):
         # start with validation of provided args
         self._validate_payload(exchange, from_date, to_date, filters)
 
@@ -132,16 +140,18 @@ class TardisClient:
             end_time - start_time,
         )
 
-    async def reconstruct_market(self, exchange: str, from_date: str, to_date: str, symbols: List[str])-> AsyncIterable[MarketResponse]:
+    async def reconstruct_market(
+        self, exchange: str, from_date: str, to_date: str, symbols: List[str]
+    ) -> AsyncIterable[MarketResponse]:
         market_reconstructor = get_market_reconstructor(exchange, symbols)
         filters = market_reconstructor.get_filters()
-        
+
         self._validate_payload(exchange, from_date, to_date, filters)
 
         async for local_timestamp, message in self.replay(exchange, from_date, to_date, filters):
             market_response = market_reconstructor.reconstruct(local_timestamp, message)
             if market_response is not None:
-                yield  market_response
+                yield market_response
 
     def clear_cache(self):
         shutil.rmtree(self.cache_dir)
