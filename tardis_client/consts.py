@@ -1,29 +1,33 @@
 EXCHANGES = [
     "bitmex",
     "deribit",
-    "binance",
     "binance-futures",
+    "binance",
     "ftx",
-    "okex",
     "okex-futures",
+    "okex-options",
     "okex-swap",
-    "huobi",
+    "okex",
     "huobi-dm",
+    "huobi-dm-swap",
+    "huobi",
+    "bitfinex-derivatives",
+    "bitfinex",
+    "bitfinex-alts",
     "bitflyer",
-    "bitstamp",
-    "coinbase",
     "cryptofacilities",
     "kraken",
+    "bitstamp",
+    "coinbase",
     "gemini",
-    "bitfinex",
-    "bitfinex-derivatives",
-    "binance-dex",
-    "binance-jersey",
-    "binance-us",
-    "huobi-us",
+    "coinflex",
     "bybit",
+    "phemex",
     "okcoin",
     "hitbtc",
+    "binance-jersey",
+    "binance-us",
+    "binance-dex",
 ]
 
 BINANCE_CHANNELS = ["trade", "aggTrade", "ticker", "depth", "depthSnapshot", "bookTicker"]
@@ -57,11 +61,11 @@ BITMEX_CHANNELS = [
 BITSTAMP_CHANNELS = ["live_trades", "live_orders", "diff_order_book"]
 
 COINBASE_CHANNELS = [
+    "match",
     "subscriptions",
     "received",
     "open",
     "done",
-    "match",
     "change",
     "l2update",
     "ticker",
@@ -80,34 +84,44 @@ DERIBIT_CHANNELS = [
     "trades",
     "ticker",
     "quote",
+    "platform_state",
 ]
 
-KRAKEN_CHANNELS = ["ticker", "trade", "book", "spread"]
+KRAKEN_CHANNELS = ["trade", "ticker", "book", "spread"]
 
 OKEX_CHANNELS = ["spot/trade", "spot/depth", "spot/ticker"]
 
-OKCOIN_CHANNELS = ["spot/trade", "spot/depth", "spot/ticker"]
+OKCOIN_CHANNELS = ["spot/trade", "spot/depth", "spot/depth_l2_tbt", "spot/ticker"]
 
 OKEX_FUTURES_CHANNELS = [
     "futures/trade",
     "futures/depth",
     "futures/depth_l2_tbt",
     "futures/ticker",
-    "futures/price_range",
     "futures/mark_price",
-    "futures/estimated_price",
     "index/ticker",
 ]
 
 OKEX_SWAP_CHANNELS = [
     "swap/trade",
     "swap/depth",
+    "swap/depth_l2_tbt",
     "swap/ticker",
     "swap/funding_rate",
-    "swap/price_range",
     "swap/mark_price",
     "index/ticker",
 ]
+
+OKEX_OPTIONS_CHANNELS = [
+    "option/trade",
+    "option/depth",
+    "option/depth_l2_tbt",
+    "option/ticker",
+    "option/summary",
+    "option/instruments",
+]
+
+COINFLEX_CHANNELS = ["OrderOpened", "OrderModified", "OrdersMatched", "OrderClosed", "TickerChanged"]
 
 CRYPTOFACILITIES_CHANNELS = ["trade", "trade_snapshot", "book", "book_snapshot", "ticker", "heartbeat"]
 
@@ -115,7 +129,7 @@ FTX_CHANNELS = ["orderbook", "trades"]
 
 GEMINI_CHANNELS = ["trade", "l2_updates", "auction_open", "auction_indicative", "auction_result"]
 
-BITFLYER_CHANNELS = ["lightning_board_snapshot", "lightning_board", "lightning_ticker", "lightning_executions"]
+BITFLYER_CHANNELS = ["lightning_executions", "lightning_board_snapshot", "lightning_board", "lightning_ticker"]
 
 BINANCE_FUTURES_CHANNELS = ["trade", "aggTrade", "ticker", "depth", "markPrice", "depthSnapshot", "bookTicker", "forceOrder"]
 
@@ -123,13 +137,15 @@ BITFINEX_DERIV_CHANNELS = ["trades", "book", "status"]
 
 HUOBI_CHANNELS = ["depth", "detail", "trade", "bbo"]
 
-HUOBI_US_CHANNELS = ["depth", "detail", "trade"]
-
 HUOBI_DM_CHANNELS = ["depth", "detail", "trade"]
 
-BYBIT_CHANNELS = ["trade", "instrument_info", "orderBookL2_25", "insurance"]
+HUOBI_DM_SWAP_CHANNELS = ["depth", "detail", "trade"]
 
-HITBTC_CHANNELS = ["snapshotTrades", "updateTrades", "snapshotOrderbook", "updateOrderbook"]
+PHEMEX_CHANNELS = ["book", "trades", "market24h"]
+
+BYBIT_CHANNELS = ["trade", "instrument_info", "orderBookL2_25", "insurance", "orderBook_200"]
+
+HITBTC_CHANNELS = ["updateTrades", "snapshotTrades", "snapshotOrderbook", "updateOrderbook"]
 
 EXCHANGE_CHANNELS_INFO = {
     "bitmex": BITMEX_CHANNELS,
@@ -141,11 +157,13 @@ EXCHANGE_CHANNELS_INFO = {
     "okex": OKEX_CHANNELS,
     "okex-swap": OKEX_SWAP_CHANNELS,
     "okex-futures": OKEX_FUTURES_CHANNELS,
+    "okex-options": OKEX_OPTIONS_CHANNELS,
     "binance": BINANCE_CHANNELS,
     "binance-jersey": BINANCE_CHANNELS,
     "binance-dex": BINANCE_DEX_CHANNELS,
     "binance-us": BINANCE_CHANNELS,
     "bitfinex": BITFINEX_CHANNELS,
+    "bitfinex-alts": BITFINEX_CHANNELS,
     "ftx": FTX_CHANNELS,
     "gemini": GEMINI_CHANNELS,
     "bitflyer": BITFLYER_CHANNELS,
@@ -153,10 +171,12 @@ EXCHANGE_CHANNELS_INFO = {
     "bitfinex-derivatives": BITFINEX_DERIV_CHANNELS,
     "huobi": HUOBI_CHANNELS,
     "huobi-dm": HUOBI_DM_CHANNELS,
-    "huobi-us": HUOBI_US_CHANNELS,
+    "huobi-dm-swap": HUOBI_DM_SWAP_CHANNELS,
     "bybit": BYBIT_CHANNELS,
     "okcoin": OKCOIN_CHANNELS,
     "hitbtc": HITBTC_CHANNELS,
+    "coinflex": COINFLEX_CHANNELS,
+    "phemex": PHEMEX_CHANNELS,
 }
 
 
