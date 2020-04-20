@@ -54,13 +54,13 @@ async def download_async(
         end_date = dateutil.parser.isoparse(to_date)
 
         for symbol in symbols:
-            symbols = symbol.replace(":", "-").replace("/", "-").upper()
+            symbol = symbol.replace(":", "-").replace("/", "-").upper()
 
             for data_type in data_types:
                 start_time = time()
 
                 logger.debug(
-                    "csv download started for %s %s %s from %s to %s", exchange, data_type, symbol, from_date, to_date,
+                    "download started for %s %s %s from %s to %s", exchange, data_type, symbol, from_date, to_date,
                 )
 
                 fetch_csv_tasks = set()
@@ -91,15 +91,15 @@ async def download_async(
 
                 end_time = time()
 
-            logger.debug(
-                "csv download finished for %s %s %s from %s to %s, total time: %s seconds",
-                exchange,
-                data_type,
-                symbol,
-                from_date,
-                to_date,
-                end_time - start_time,
-            )
+                logger.debug(
+                    "download finished for %s %s %s from %s to %s, total time: %s seconds",
+                    exchange,
+                    data_type,
+                    symbol,
+                    from_date,
+                    to_date,
+                    end_time - start_time,
+                )
 
 
 async def _reliably_download_file(session, url, download_path):
@@ -148,8 +148,6 @@ async def _reliably_download_file(session, url, download_path):
 
 
 async def _download(session, url, download_path):
-    logger.debug("downloading %s to %s", url, download_path)
-
     async with session.get(url) as response:
         if response.status != 200:
             error_text = await response.text()
