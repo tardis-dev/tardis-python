@@ -14,7 +14,7 @@ import aiohttp
 import dateutil.parser
 
 logger = logging.getLogger(__name__)
-CONCURRENCY_LIMIT = 20
+CONCURRENCY_LIMIT = 10
 
 
 def default_file_name(exchange: str, data_type: str, date: datetime, symbol: str, format: str):
@@ -69,7 +69,7 @@ async def download_async(
                     if len(fetch_csv_tasks) >= CONCURRENCY_LIMIT:
                         # if there are going to be more pending fetch downloads than concurrency limit
                         # wait before adding another one
-                        done, fetch_data_tasks = await asyncio.wait(fetch_csv_tasks, return_when=asyncio.FIRST_COMPLETED)
+                        done, fetch_csv_tasks = await asyncio.wait(fetch_csv_tasks, return_when=asyncio.FIRST_COMPLETED)
                         # need to check the result that may throw if task finished with an error
                         done.pop().result()
 
