@@ -73,7 +73,7 @@ async def download_async(
                         # need to check the result that may throw if task finished with an error
                         done.pop().result()
 
-                    csv_url = f"https://datasets.tardis.dev/v1/{exchange}/{data_type}/{current_date.strftime('%Y/%m/%d')}/{symbol}.{format}"
+                    csv_url = f"https://datasets.tardis.dev/v1/{exchange}/{data_type}/{current_date.strftime('%Y/%m/%d')}/{symbol}.{format}.gz"
 
                     download_path = f"{download_dir}/{get_filename(exchange,data_type,current_date,symbol,format)}"
 
