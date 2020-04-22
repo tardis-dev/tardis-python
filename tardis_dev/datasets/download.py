@@ -48,60 +48,61 @@ async def download_async(
     download_dir,
     get_filename,
 ):
+    headers = {"Authorization": f"Bearer {api_key}" if api_key else ""}
 
-    end_date = dateutil.parser.isoparse(to_date)
+    async with aiohttp.ClientSession(auto_decompress=False, headers=headers) as session:
+        end_date = dateutil.parser.isoparse(to_date)
 
-    for symbol in symbols:
-        symbol = symbol.replace(":", "-").replace("/", "-").upper()
+        for symbol in symbols:
+            symbol = symbol.replace(":", "-").replace("/", "-").upper()
 
-        for data_type in data_types:
-            start_time = time()
+            for data_type in data_types:
+                start_time = time()
 
-            logger.debug(
-                "download started for %s %s %s from %s to %s", exchange, data_type, symbol, from_date, to_date,
-            )
-
-            fetch_csv_tasks = set()
-            current_date = dateutil.parser.isoparse(from_date)
-
-            while True:
-                if len(fetch_csv_tasks) >= CONCURRENCY_LIMIT:
-                    # if there are going to be more pending fetch downloads than concurrency limit
-                    # wait before adding another one
-                    done, fetch_csv_tasks = await asyncio.wait(fetch_csv_tasks, return_when=asyncio.FIRST_COMPLETED)
-                    # need to check the result that may throw if task finished with an error
-                    done.pop().result()
-
-                url = f"https://datasets.tardis.dev/v1/{exchange}/{data_type}/{current_date.strftime('%Y/%m/%d')}/{symbol}.{format}.gz"
-
-                download_path = f"{download_dir}/{get_filename(exchange,data_type,current_date,symbol,format)}"
-
-                fetch_csv_tasks.add(
-                    asyncio.get_event_loop().create_task(_reliably_download_file(url, download_path, api_key))
+                logger.debug(
+                    "download started for %s %s %s from %s to %s", exchange, data_type, symbol, from_date, to_date,
                 )
 
-                current_date = current_date + timedelta(days=1)
+                fetch_csv_tasks = set()
+                current_date = dateutil.parser.isoparse(from_date)
+                while True:
+                    if len(fetch_csv_tasks) >= CONCURRENCY_LIMIT:
+                        # if there are going to be more pending fetch downloads than concurrency limit
+                        # wait before adding another one
+                        done, fetch_csv_tasks = await asyncio.wait(fetch_csv_tasks, return_when=asyncio.FIRST_COMPLETED)
+                        # need to check the result that may throw if task finished with an error
+                        done.pop().result()
 
-                if current_date >= end_date:
-                    break
+                    url = f"https://datasets.tardis.dev/v1/{exchange}/{data_type}/{current_date.strftime('%Y/%m/%d')}/{symbol}.{format}.gz"
 
-            # finally wait for the remaining fetch data download tasks
-            await asyncio.gather(*fetch_csv_tasks)
+                    download_path = f"{download_dir}/{get_filename(exchange,data_type,current_date,symbol,format)}"
 
-            end_time = time()
+                    fetch_csv_tasks.add(
+                        asyncio.get_event_loop().create_task(_reliably_download_file(session, url, download_path))
+                    )
 
-            logger.debug(
-                "download finished for %s %s %s from %s to %s, total time: %s seconds",
-                exchange,
-                data_type,
-                symbol,
-                from_date,
-                to_date,
-                end_time - start_time,
-            )
+                    current_date = current_date + timedelta(days=1)
+
+                    if current_date >= end_date:
+                        break
+
+                # finally wait for the remaining fetch data download tasks
+                await asyncio.gather(*fetch_csv_tasks)
+
+                end_time = time()
+
+                logger.debug(
+                    "download finished for %s %s %s from %s to %s, total time: %s seconds",
+                    exchange,
+                    data_type,
+                    symbol,
+                    from_date,
+                    to_date,
+                    end_time - start_time,
+                )
 
 
-async def _reliably_download_file(url, download_path, api_key):
+async def _reliably_download_file(session, url, download_path):
     MAX_ATTEMPTS = 5
     attempts = 0
 
@@ -109,7 +110,7 @@ async def _reliably_download_file(url, download_path, api_key):
         attempts = attempts + 1
 
         try:
-            await _download_file(url, download_path, api_key)
+            await _download(session, url, download_path)
             break
 
         except asyncio.CancelledError:
@@ -145,28 +146,25 @@ async def _reliably_download_file(url, download_path, api_key):
             await asyncio.sleep(next_attempts_delay)
 
 
-async def _download_file(url, download_path, api_key):
-    headers = {"Authorization": f"Bearer {api_key}" if api_key else ""}
+async def _download(session, url, download_path):
+    async with session.get(url) as response:
+        if response.status != 200:
+            error_text = await response.text()
+            raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=None, fp=None)
 
-    async with aiohttp.ClientSession(headers=headers) as session:
-        async with session.get(url) as response:
-            if response.status != 200:
-                error_text = await response.text()
-                raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=None, fp=None)
+        # ensure that directory where we want to download data
+        pathlib.Path(download_path).parent.mkdir(parents=True, exist_ok=True)
+        temp_download_path = f"{download_path}{secrets.token_hex(8)}.unconfirmed"
+        # write response stream to unconfirmed temp file
 
-            # ensure that directory where we want to download data
-            pathlib.Path(download_path).parent.mkdir(parents=True, exist_ok=True)
-            temp_download_path = f"{download_path}{secrets.token_hex(8)}.unconfirmed"
-            # write response stream to unconfirmed temp file
+        async with aiofiles.open(temp_download_path, "wb") as temp_file:
+            async for data in response.content.iter_any():
+                await temp_file.write(data)
 
-            async with aiofiles.open(temp_download_path, "wb") as temp_file:
-                async for data in response.content.iter_any():
-                    await temp_file.write(data)
-
-            # rename temp file to desired name only if file has been fully and successfully saved
-            # it there is an error during renaming file it means that target file aready exists
-            # and we're fine as only successfully save files exist
-            try:
-                os.replace(temp_download_path, download_path)
-            except Exception as ex:
-                logger.debug("download replace error: %s", ex)
+        # rename temp file to desired name only if file has been fully and successfully saved
+        # it there is an error during renaming file it means that target file aready exists
+        # and we're fine as only successfully save files exist
+        try:
+            os.replace(temp_download_path, download_path)
+        except Exception as ex:
+            logger.debug("download replace error: %s", ex)
