@@ -16,6 +16,8 @@ import dateutil.parser
 logger = logging.getLogger(__name__)
 CONCURRENCY_LIMIT = 10
 
+default_timeout = aiohttp.ClientTimeout(total=30 * 60)
+
 
 def default_file_name(exchange: str, data_type: str, date: datetime, symbol: str, format: str):
     return f"{exchange}_{data_type}_{date.strftime('%Y-%m-%d')}_{symbol}.{format}.gz"
@@ -31,9 +33,12 @@ def download(
     api_key: str = "",
     download_dir="./datasets",
     get_filename=default_file_name,
+    timeout=default_timeout,
 ):
     asyncio.get_event_loop().run_until_complete(
-        download_async(exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename)
+        download_async(
+            exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename, timeout
+        )
     )
 
 
@@ -47,10 +52,11 @@ async def download_async(
     api_key: str,
     download_dir,
     get_filename,
+    timeout,
 ):
     headers = {"Authorization": f"Bearer {api_key}" if api_key else ""}
 
-    async with aiohttp.ClientSession(auto_decompress=False, headers=headers) as session:
+    async with aiohttp.ClientSession(auto_decompress=False, headers=headers, timeout=timeout) as session:
         end_date = dateutil.parser.isoparse(to_date)
 
         for symbol in symbols:
