@@ -2,6 +2,7 @@ EXCHANGES = [
     "bitmex",
     "deribit",
     "binance-futures",
+    "binance-delivery",
     "binance",
     "ftx",
     "okex-futures",
@@ -14,7 +15,6 @@ EXCHANGES = [
     "bitfinex-derivatives",
     "bitfinex",
     "bitfinex-alts",
-    "bitflyer",
     "cryptofacilities",
     "kraken",
     "bitstamp",
@@ -23,16 +23,19 @@ EXCHANGES = [
     "coinflex",
     "bybit",
     "phemex",
+    "ftx-us",
     "okcoin",
+    "bitflyer",
     "hitbtc",
+    "delta",
     "binance-jersey",
     "binance-us",
     "binance-dex",
 ]
 
-BINANCE_CHANNELS = ["trade", "aggTrade", "ticker", "depth", "depthSnapshot", "bookTicker"]
+BINANCE_CHANNELS = ["trade", "aggTrade", "ticker", "depth", "depthSnapshot", "bookTicker", "recentTrades"]
 BINANCE_DEX_CHANNELS = ["trades", "marketDiff", "depthSnapshot"]
-BITFINEX_CHANNELS = ["trades", "book"]
+BITFINEX_CHANNELS = ["trades", "book", "raw_book"]
 
 BITMEX_CHANNELS = [
     "trade",
@@ -89,7 +92,7 @@ DERIBIT_CHANNELS = [
 
 KRAKEN_CHANNELS = ["trade", "ticker", "book", "spread"]
 
-OKEX_CHANNELS = ["spot/trade", "spot/depth", "spot/ticker"]
+OKEX_CHANNELS = ["spot/trade", "spot/depth", "spot/depth_l2_tbt", "spot/ticker"]
 
 OKCOIN_CHANNELS = ["spot/trade", "spot/depth", "spot/depth_l2_tbt", "spot/ticker"]
 
@@ -119,21 +122,47 @@ OKEX_OPTIONS_CHANNELS = [
     "option/ticker",
     "option/summary",
     "option/instruments",
+    "index/ticker",
 ]
 
 COINFLEX_CHANNELS = ["OrderOpened", "OrderModified", "OrdersMatched", "OrderClosed", "TickerChanged"]
 
 CRYPTOFACILITIES_CHANNELS = ["trade", "trade_snapshot", "book", "book_snapshot", "ticker", "heartbeat"]
 
-FTX_CHANNELS = ["orderbook", "trades"]
+FTX_CHANNELS = ["orderbook", "trades", "instrument", "markets"]
 
 GEMINI_CHANNELS = ["trade", "l2_updates", "auction_open", "auction_indicative", "auction_result"]
 
 BITFLYER_CHANNELS = ["lightning_executions", "lightning_board_snapshot", "lightning_board", "lightning_ticker"]
 
-BINANCE_FUTURES_CHANNELS = ["trade", "aggTrade", "ticker", "depth", "markPrice", "depthSnapshot", "bookTicker", "forceOrder"]
+BINANCE_FUTURES_CHANNELS = [
+    "trade",
+    "aggTrade",
+    "ticker",
+    "depth",
+    "markPrice",
+    "depthSnapshot",
+    "bookTicker",
+    "forceOrder",
+    "openInterest",
+    "recentTrades",
+]
 
-BITFINEX_DERIV_CHANNELS = ["trades", "book", "status"]
+BINANCE_DELIVERY_CHANNELS = [
+    "trade",
+    "aggTrade",
+    "ticker",
+    "depth",
+    "markPrice",
+    "indexPrice",
+    "depthSnapshot",
+    "bookTicker",
+    "forceOrder",
+    "openInterest",
+    "recentTrades",
+]
+
+BITFINEX_DERIV_CHANNELS = ["trades", "book", "raw_book", "status", "liquidations"]
 
 HUOBI_CHANNELS = ["depth", "detail", "trade", "bbo"]
 
@@ -141,11 +170,25 @@ HUOBI_DM_CHANNELS = ["depth", "detail", "trade"]
 
 HUOBI_DM_SWAP_CHANNELS = ["depth", "detail", "trade"]
 
-PHEMEX_CHANNELS = ["book", "trades", "market24h"]
+PHEMEX_CHANNELS = ["book", "trades", "market24h", "spot_market24h"]
 
 BYBIT_CHANNELS = ["trade", "instrument_info", "orderBookL2_25", "insurance", "orderBook_200"]
 
 HITBTC_CHANNELS = ["updateTrades", "snapshotTrades", "snapshotOrderbook", "updateOrderbook"]
+
+FTX_US_CHANNELS = ["orderbook", "trades", "markets"]
+
+DELTA_CHANNELS = [
+    "l2_orderbook",
+    "recent_trade",
+    "recent_trade_snapshot",
+    "mark_price",
+    "spot_price",
+    "funding_rate",
+    "funding_rate_8h",
+    "product_updates",
+    "announcements",
+]
 
 EXCHANGE_CHANNELS_INFO = {
     "bitmex": BITMEX_CHANNELS,
@@ -165,9 +208,11 @@ EXCHANGE_CHANNELS_INFO = {
     "bitfinex": BITFINEX_CHANNELS,
     "bitfinex-alts": BITFINEX_CHANNELS,
     "ftx": FTX_CHANNELS,
+    "ftx-us": FTX_US_CHANNELS,
     "gemini": GEMINI_CHANNELS,
     "bitflyer": BITFLYER_CHANNELS,
     "binance-futures": BINANCE_FUTURES_CHANNELS,
+    "binance-delivery": BINANCE_DELIVERY_CHANNELS,
     "bitfinex-derivatives": BITFINEX_DERIV_CHANNELS,
     "huobi": HUOBI_CHANNELS,
     "huobi-dm": HUOBI_DM_CHANNELS,
@@ -177,6 +222,7 @@ EXCHANGE_CHANNELS_INFO = {
     "hitbtc": HITBTC_CHANNELS,
     "coinflex": COINFLEX_CHANNELS,
     "phemex": PHEMEX_CHANNELS,
+    "delta": DELTA_CHANNELS,
 }
 
 
