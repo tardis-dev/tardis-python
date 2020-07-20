@@ -9,17 +9,22 @@ import aiofiles
 import secrets
 import random
 import json
+import tardis_client
 
 from datetime import datetime, timedelta
 from time import time
 from tardis_client.handy import get_slice_cache_path
+
 
 logger = logging.getLogger(__name__)
 
 
 async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key):
     timeout = aiohttp.ClientTimeout(total=60)
-    headers = {"Authorization": f"Bearer {api_key}" if api_key else ""}
+    headers = {
+        "Authorization": f"Bearer {api_key}" if api_key else "",
+        "User-Agent": f"tardis-client/{tardis_client.__version__} (+https://github.com/tardis-dev/tardis-python)",
+    }
 
     minutes_diff = int(round((to_date - from_date).total_seconds() / 60))
     offset = 0
