@@ -36,6 +36,7 @@ def download(
     timeout = default_timeout,
     concurrency = 5
 ):
+
     asyncio.get_event_loop().run_until_complete(
         download_async(
             exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename, timeout, download_url_base, concurrency
@@ -114,6 +115,10 @@ async def download_async(
 async def _reliably_download_file(session, url, download_path):
     MAX_ATTEMPTS = 5
     attempts = 0
+
+    if os.path.exists(download_path):
+        return
+
 
     while True:
         attempts = attempts + 1
