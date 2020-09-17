@@ -14,7 +14,6 @@ import aiohttp
 import dateutil.parser
 
 logger = logging.getLogger(__name__)
-CONCURRENCY_LIMIT = 10
 
 default_timeout = aiohttp.ClientTimeout(total=30 * 60)
 
@@ -31,14 +30,15 @@ def download(
     to_date: str,
     format: str = "csv",
     api_key: str = "",
-    download_dir="./datasets",
-    download_url_base="datasets.tardis.dev",
-    get_filename=default_file_name,
-    timeout=default_timeout,
+    download_dir = "./datasets",
+    download_url_base = "datasets.tardis.dev",
+    get_filename = default_file_name,
+    timeout = default_timeout,
+    concurrency = 5
 ):
     asyncio.get_event_loop().run_until_complete(
         download_async(
-            exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename, timeout, download_url_base
+            exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename, timeout, download_url_base, concurrency
         )
     )
 
@@ -54,7 +54,8 @@ async def download_async(
     download_dir,
     get_filename,
     timeout,
-    download_url_base
+    download_url_base,
+    concurrency
 ):
     headers = {"Authorization": f"Bearer {api_key}" if api_key else ""}
 
@@ -74,7 +75,7 @@ async def download_async(
                 fetch_csv_tasks = set()
                 current_date = dateutil.parser.isoparse(from_date)
                 while True:
-                    if len(fetch_csv_tasks) >= CONCURRENCY_LIMIT:
+                    if len(fetch_csv_tasks) >= concurrency:
                         # if there are going to be more pending fetch downloads than concurrency limit
                         # wait before adding another one
                         done, fetch_csv_tasks = await asyncio.wait(fetch_csv_tasks, return_when=asyncio.FIRST_COMPLETED)
