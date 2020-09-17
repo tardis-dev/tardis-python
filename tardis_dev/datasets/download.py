@@ -32,12 +32,13 @@ def download(
     format: str = "csv",
     api_key: str = "",
     download_dir="./datasets",
+    download_url_base="datasets.tardis.dev",
     get_filename=default_file_name,
     timeout=default_timeout,
 ):
     asyncio.get_event_loop().run_until_complete(
         download_async(
-            exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename, timeout
+            exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename, timeout, download_url_base
         )
     )
 
@@ -53,6 +54,7 @@ async def download_async(
     download_dir,
     get_filename,
     timeout,
+    download_url_base
 ):
     headers = {"Authorization": f"Bearer {api_key}" if api_key else ""}
 
@@ -79,7 +81,7 @@ async def download_async(
                         # need to check the result that may throw if task finished with an error
                         done.pop().result()
 
-                    url = f"https://datasets.tardis.dev/v1/{exchange}/{data_type}/{current_date.strftime('%Y/%m/%d')}/{symbol}.{format}.gz"
+                    url = f"https://{download_url_base}/v1/{exchange}/{data_type}/{current_date.strftime('%Y/%m/%d')}/{symbol}.{format}.gz"
 
                     download_path = f"{download_dir}/{get_filename(exchange,data_type,current_date,symbol,format)}"
 
@@ -157,20 +159,25 @@ async def _download(session, url, download_path):
         if response.status != 200:
             error_text = await response.text()
             raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=None, fp=None)
-
         # ensure that directory where we want to download data
         pathlib.Path(download_path).parent.mkdir(parents=True, exist_ok=True)
         temp_download_path = f"{download_path}{secrets.token_hex(8)}.unconfirmed"
-        # write response stream to unconfirmed temp file
 
-        async with aiofiles.open(temp_download_path, "wb") as temp_file:
-            async for data in response.content.iter_any():
-                await temp_file.write(data)
+        try:    
+            # write response stream to unconfirmed temp file
+            async with aiofiles.open(temp_download_path, "wb") as temp_file:
+                async for data in response.content.iter_any():
+                    await temp_file.write(data)
 
-        # rename temp file to desired name only if file has been fully and successfully saved
-        # it there is an error during renaming file it means that target file aready exists
-        # and we're fine as only successfully save files exist
-        try:
-            os.replace(temp_download_path, download_path)
-        except Exception as ex:
-            logger.debug("download replace error: %s", ex)
+            # rename temp file to desired name only if file has been fully and successfully saved
+            # it there is an error during renaming file it means that target file aready exists
+            # and we're fine as only successfully save files exist
+            try:
+                os.replace(temp_download_path, download_path)
+            except Exception as ex:
+                logger.debug("download replace error: %s", ex)
+        finally:
+            # cleanup temp files if still exists
+            if os.path.exists(temp_download_path):
+                os.remove(temp_download_path)
+
