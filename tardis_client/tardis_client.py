@@ -11,7 +11,6 @@ from typing import List, AsyncIterable
 from collections import namedtuple
 from datetime import datetime, timedelta
 
-from tardis_client.consts import EXCHANGES, EXCHANGE_CHANNELS_INFO
 from tardis_client.handy import get_slice_cache_path
 from tardis_client.channel import Channel
 from tardis_client.data_downloader import fetch_data_to_replay
@@ -25,7 +24,7 @@ DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), ".tardis-cache")
 
 
 class TardisClient:
-    def __init__(self, endpoint="https://tardis.dev/api", cache_dir=DEFAULT_CACHE_DIR, api_key=""):
+    def __init__(self, endpoint="https://api.tardis.dev", cache_dir=DEFAULT_CACHE_DIR, api_key=""):
         self.logger = logging.getLogger(__name__)
         self.endpoint = endpoint
         self.cache_dir = cache_dir
@@ -157,11 +156,6 @@ class TardisClient:
         shutil.rmtree(self.cache_dir)
 
     def _validate_payload(self, exchange, from_date, to_date, filters):
-        if exchange not in EXCHANGES:
-            raise ValueError(
-                f"Invalid 'exchange' argument: {exchange}. Please provide one of the following exchanges: {EXCHANGES.join(', ')}."
-            )
-
         if from_date is None or self._try_parse_as_iso_date(from_date) is False:
             raise ValueError(
                 f"""Invalid 'from_date' argument: {from_date}. Please provide valid ISO date string.
@@ -188,11 +182,6 @@ class TardisClient:
 
         if len(filters) > 0:
             for filter in filters:
-                if filter.name not in EXCHANGE_CHANNELS_INFO[exchange]:
-                    valid_channels = ", ".join(EXCHANGE_CHANNELS_INFO[exchange])
-                    raise ValueError(
-                        f"Invalid 'name' argument: {filter.name}. Please provide one of the following channels: {valid_channels}."
-                    )
 
                 if filter.symbols is None:
                     continue
