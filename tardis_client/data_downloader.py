@@ -19,8 +19,8 @@ from tardis_client.handy import get_slice_cache_path
 logger = logging.getLogger(__name__)
 
 
-async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key):
-    timeout = aiohttp.ClientTimeout(total=60)
+async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key, http_timeout):
+    timeout = aiohttp.ClientTimeout(total=http_timeout)
     headers = {
         "Authorization": f"Bearer {api_key}" if api_key else "",
         "User-Agent": f"tardis-client/{tardis_client.__version__} (+https://github.com/tardis-dev/tardis-python)",
