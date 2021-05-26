@@ -19,7 +19,7 @@ from tardis_client.handy import get_slice_cache_path
 logger = logging.getLogger(__name__)
 
 
-async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key, http_timeout):
+async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key, http_timeout, http_proxy):
     timeout = aiohttp.ClientTimeout(total=http_timeout)
     headers = {
         "Authorization": f"Bearer {api_key}" if api_key else "",
@@ -41,7 +41,7 @@ async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, 
         filters,
     )
 
-    async with aiohttp.ClientSession(auto_decompress=False, timeout=timeout, headers=headers) as session:
+    async with aiohttp.ClientSession(auto_decompress=False, timeout=timeout, headers=headers, trust_env=True) as session:
         # loop below will fetch data slices if not cached already concurrently up to the conecurrency limit
         while offset < minutes_diff:
             if len(fetch_data_tasks) >= FETCH_DATA_CONCURRENCY_LIMIT:
@@ -53,7 +53,7 @@ async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, 
 
             fetch_data_tasks.add(
                 asyncio.create_task(
-                    _fetch_data_if_not_cached(session, endpoint, cache_dir, exchange, from_date, offset, filters)
+                    _fetch_data_if_not_cached(session, endpoint, cache_dir, exchange, from_date, offset, filters, http_proxy)
                 )
             )
             offset += 1
@@ -73,19 +73,19 @@ async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, 
     )
 
 
-async def _fetch_data_if_not_cached(session, endpoint, cache_dir, exchange, from_date, offset, filters):
+async def _fetch_data_if_not_cached(session, endpoint, cache_dir, exchange, from_date, offset, filters, http_proxy):
     slice_date = from_date + timedelta(seconds=offset * 60)
     cache_path = get_slice_cache_path(cache_dir, exchange, slice_date, filters)
 
     # fetch and cache slice only if it's not cached already
     if os.path.isfile(cache_path) == False:
-        await _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path)
+        await _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path, http_proxy)
         logger.debug("fetched data slice for date %s from the API and cached - %s", slice_date, cache_path)
     else:
         logger.debug("data slice for date %s already in local cache - %s", slice_date, cache_path)
 
 
-async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path):
+async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path, http_proxy):
     fetch_url = f"{endpoint}/v1/data-feeds/{exchange}?from={from_date.isoformat()}&offset={offset}"
 
     if filters is not None and len(filters) > 0:
@@ -102,7 +102,7 @@ async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date
         attempts += 1
         too_many_requests = False
         try:
-            await _fetch_and_cache_slice(session, url=fetch_url, cache_path=cache_path)
+            await _fetch_and_cache_slice(session, url=fetch_url, cache_path=cache_path, http_proxy=http_proxy)
             break
 
         except asyncio.CancelledError:
@@ -133,8 +133,8 @@ async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date
             await asyncio.sleep(next_attempts_delay)
 
 
-async def _fetch_and_cache_slice(session, url, cache_path):
-    async with session.get(url) as response:
+async def _fetch_and_cache_slice(session, url, cache_path, http_proxy):
+    async with session.get(url,proxy=http_proxy) as response:
         if response.status != 200:
             error_text = await response.text()
             raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=None, fp=None)

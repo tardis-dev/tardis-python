@@ -24,12 +24,13 @@ DEFAULT_CACHE_DIR = os.path.join(tempfile.gettempdir(), ".tardis-cache")
 
 
 class TardisClient:
-    def __init__(self, endpoint="https://api.tardis.dev", cache_dir=DEFAULT_CACHE_DIR, api_key="", http_timeout=60):
+    def __init__(self, endpoint="https://api.tardis.dev", cache_dir=DEFAULT_CACHE_DIR, api_key="", http_timeout=60, http_proxy=None):
         self.logger = logging.getLogger(__name__)
         self.endpoint = endpoint
         self.cache_dir = cache_dir
         self.api_key = api_key
         self.http_timeout = http_timeout
+        self.http_proxy = http_proxy
 
         self.logger.debug("initialized with: %s", {"endpoint": endpoint, "cache_dir": cache_dir, "api_key": api_key})
 
@@ -64,7 +65,7 @@ class TardisClient:
 
         # start fetch_data_to_replay task
         fetch_data_task = asyncio.create_task(
-            fetch_data_to_replay(exchange, from_date, to_date, filters, self.endpoint, self.cache_dir, self.api_key, self.http_timeout)
+            fetch_data_to_replay(exchange, from_date, to_date, filters, self.endpoint, self.cache_dir, self.api_key, self.http_timeout, self.http_proxy)
         )
 
         # iterate over every minute in <=from_date,to_date> date range
