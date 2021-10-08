@@ -34,12 +34,13 @@ def download(
     download_url_base = "datasets.tardis.dev",
     get_filename = default_file_name,
     timeout = default_timeout,
-    concurrency = 5
+    concurrency = 5,
+    http_proxy = None
 ):
 
     asyncio.get_event_loop().run_until_complete(
         download_async(
-            exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename, timeout, download_url_base, concurrency
+            exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename, timeout, download_url_base, concurrency, http_proxy
         )
     )
 
@@ -56,11 +57,12 @@ async def download_async(
     get_filename,
     timeout,
     download_url_base,
-    concurrency
+    concurrency,
+    http_proxy
 ):
     headers = {"Authorization": f"Bearer {api_key}" if api_key else ""}
 
-    async with aiohttp.ClientSession(auto_decompress=False, headers=headers, timeout=timeout) as session:
+    async with aiohttp.ClientSession(auto_decompress=False, headers=headers, timeout=timeout, trust_env=True) as session:
         end_date = dateutil.parser.isoparse(to_date)
 
         for symbol in symbols:
@@ -88,7 +90,7 @@ async def download_async(
                     download_path = f"{download_dir}/{get_filename(exchange,data_type,current_date,symbol,format)}"
 
                     fetch_csv_tasks.add(
-                        asyncio.get_event_loop().create_task(_reliably_download_file(session, url, download_path))
+                        asyncio.get_event_loop().create_task(_reliably_download_file(session, url, download_path, http_proxy))
                     )
 
                     current_date = current_date + timedelta(days=1)
@@ -112,7 +114,7 @@ async def download_async(
                 )
 
 
-async def _reliably_download_file(session, url, download_path):
+async def _reliably_download_file(session, url, download_path, http_proxy):
     MAX_ATTEMPTS = 5
     attempts = 0
 
@@ -124,7 +126,7 @@ async def _reliably_download_file(session, url, download_path):
         attempts = attempts + 1
 
         try:
-            await _download(session, url, download_path)
+            await _download(session, url, download_path, http_proxy)
             break
 
         except asyncio.CancelledError:
@@ -160,8 +162,8 @@ async def _reliably_download_file(session, url, download_path):
             await asyncio.sleep(next_attempts_delay)
 
 
-async def _download(session, url, download_path):
-    async with session.get(url) as response:
+async def _download(session, url, download_path, http_proxy):
+    async with session.get(url, proxy=http_proxy) as response:
         if response.status != 200:
             error_text = await response.text()
             raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=None, fp=None)
