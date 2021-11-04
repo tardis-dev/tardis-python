@@ -3,7 +3,7 @@ import aiohttp
 
 
 def get_exchange_details(exchange: str, http_proxy = None):
-    return asyncio.get_event_loop().run_until_complete(get_exchange_details_async(exchange))
+    return asyncio.get_event_loop().run_until_complete(get_exchange_details_async(exchange, http_proxy))
 
 
 async def get_exchange_details_async(exchange, http_proxy):
