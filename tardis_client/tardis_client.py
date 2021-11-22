@@ -41,6 +41,7 @@ class TardisClient:
         to_date: str,
         filters: List[Channel] = [],
         decode_response=True,
+        with_disconnects=False,
         json=default_json,
     ):
         # start with validation of provided args
@@ -101,7 +102,10 @@ class TardisClient:
                 for line in file:
                     # each line ends with \n byte, so in order to exclude empty lines (\n only) we must check if line length is < 1
                     if len(line) <= 1:
+                        if with_disconnects:
+                            yield None
                         continue
+                        
                     messages_count = messages_count + 1
 
                     # local timestamps provided by the API always have 28 characters
