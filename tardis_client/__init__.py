@@ -1,4 +1,4 @@
-__version__ = "1.3.1"
+__version__ = "1.3.2"
 from tardis_client.tardis_client import TardisClient
 from tardis_client.channel import Channel
 from tardis_client.reconstructors.market_reconstructor import MESSAGE_TYPE, BOOK_UPDATE_TYPE
