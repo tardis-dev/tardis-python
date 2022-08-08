@@ -119,9 +119,7 @@ class TardisClient:
                         # since python datetime has microsecond precision and provided timestamp has 100ns precision
                         # we ignore last two characters of timestmap provided by the API (last character is Z)
                         # so we can decode it as python datetime
-                        timestamp = datetime.strptime(
-                            line[0 : DATE_MESSAGE_SPLIT_INDEX - 2].decode("utf-8"), "%Y-%m-%dT%H:%M:%S.%f"
-                        )
+                        timestamp = datetime.fromisoformat(line[0 : DATE_MESSAGE_SPLIT_INDEX - 2].decode("utf-8"))
 
                         yield Response(timestamp, json.loads(line[DATE_MESSAGE_SPLIT_INDEX + 1 :]))
                     else:
