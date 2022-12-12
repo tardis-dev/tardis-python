@@ -38,7 +38,7 @@ def download(
     http_proxy = None
 ):
 
-    asyncio.get_event_loop().run_until_complete(
+    asyncio.run(
         download_async(
             exchange, data_types, symbols, from_date, to_date, format, api_key, download_dir, get_filename, timeout, download_url_base, concurrency, http_proxy
         )
