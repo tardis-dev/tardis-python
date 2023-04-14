@@ -125,7 +125,7 @@ async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date
 
             if too_many_requests:
                 # when too many requests error received wait longer than normal
-                next_attempts_delay += 3 * attempts
+                next_attempts_delay = 61
             logger.debug(
                 "_fetch_and_cache_slice error: %s, next attempt delay: %is, path: %s", ex, next_attempts_delay, cache_path
             )
