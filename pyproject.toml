@@ -20,8 +20,8 @@ keywords = [
     "cryptocurrency api"]
 
 [tool.poetry.dependencies]
-python = ">=3.7,<4.0"
-aiohttp = "^3.8.1"
+python = ">=3.8,<4.0"
+aiohttp = ">=3.10.0"
 aiofiles = "^0.8.0"
 sortedcontainers = "^2.1"
 

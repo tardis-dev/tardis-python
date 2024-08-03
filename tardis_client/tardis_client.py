@@ -49,7 +49,7 @@ class TardisClient:
 
         from_date = datetime.fromisoformat(from_date)
         to_date = datetime.fromisoformat(to_date)
-        from_date = to_date.replace(second=0, microsecond=0)
+        from_date = from_date.replace(second=0, microsecond=0)
         to_date = to_date.replace(second=0, microsecond=0)
         current_slice_date = from_date
         start_time = time()
