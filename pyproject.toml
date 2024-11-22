@@ -3,7 +3,7 @@ line-length = 125
 
 [tool.poetry]
 name = "tardis-dev"
-version = "2.0.0a13"
+version = "2.0.0a14"
 description = "Python client for tardis.dev - historical tick-level cryptocurrency market data replay API."
 readme = "README.md"
 homepage = "https://github.com/tardis-dev/tardis-python"
