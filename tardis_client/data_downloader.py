@@ -114,7 +114,7 @@ async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date
 
             if isinstance(ex, urllib.error.HTTPError):
                 # do not retry when we've got bad or unauthorized request or enough attempts
-                if (ex.code == 400 and 'ISO 8601 format' in ex.msg == False) or ex.code == 401:
+                if (ex.code == 400 and 'ISO 8601 format' not in ex.msg) or ex.code == 401:
                     raise ex
                 if ex.code == 429:
                     too_many_requests = True
