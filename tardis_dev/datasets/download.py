@@ -126,7 +126,11 @@ async def _reliably_download_file(session, url, download_path, http_proxy):
         attempts = attempts + 1
 
         try:
-            await _download(session, url, download_path, http_proxy)
+            addRetryAttempt = attempts - 1 > 0
+            if addRetryAttempt:
+                 await _download(session,f"{url}?retryAttempt={attempts - 1}`", download_path, http_proxy)
+            else:
+                await _download(session, url, download_path, http_proxy)
             break
 
         except asyncio.CancelledError:
