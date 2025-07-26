@@ -60,7 +60,10 @@ async def download_async(
     concurrency,
     http_proxy
 ):
-    headers = {"Authorization": f"Bearer {api_key}" if api_key else ""}
+    headers = {
+        "Authorization": f"Bearer {api_key}" if api_key else "",
+        "User-Agent": f"tardis_dev/{tardis_dev.__version__}",
+    }
 
     async with aiohttp.ClientSession(auto_decompress=False, headers=headers, timeout=timeout, trust_env=True) as session:
         end_date = dateutil.parser.isoparse(to_date)
@@ -128,7 +131,7 @@ async def _reliably_download_file(session, url, download_path, http_proxy):
         try:
             addRetryAttempt = attempts - 1 > 0
             if addRetryAttempt:
-                 await _download(session,f"{url}?retryAttempt={attempts - 1}`", download_path, http_proxy)
+                 await _download(session,f"{url}?retryAttempt={attempts - 1}", download_path, http_proxy)
             else:
                 await _download(session, url, download_path, http_proxy)
             break
