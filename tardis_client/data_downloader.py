@@ -19,6 +19,28 @@ from tardis_client.handy import get_slice_cache_path
 logger = logging.getLogger(__name__)
 
 
+class _AdaptiveConcurrency:
+    def __init__(self, maximum, minimum=1):
+        self._limit = maximum
+        self._minimum = minimum
+        self._maximum = maximum
+        self._last_throttle = 0.0
+
+    def on_success(self):
+        self._limit = min(self._maximum, self._limit + 1)
+
+    def on_throttle(self):
+        now = time()
+        if now - self._last_throttle < 2.0:
+            return
+        self._last_throttle = now
+        self._limit = max(self._minimum, self._limit * 7 // 10)
+
+    @property
+    def limit(self):
+        return self._limit
+
+
 async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, cache_dir, api_key, http_timeout, http_proxy):
     timeout = aiohttp.ClientTimeout(total=http_timeout)
     headers = {
@@ -28,7 +50,7 @@ async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, 
 
     minutes_diff = int(round((to_date - from_date).total_seconds() / 60))
     offset = 0
-    FETCH_DATA_CONCURRENCY_LIMIT = 60
+    ac = _AdaptiveConcurrency(maximum=60)
     fetch_data_tasks = set()
 
     start_time = time()
@@ -42,24 +64,40 @@ async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, 
     )
 
     async with aiohttp.ClientSession(auto_decompress=False, timeout=timeout, headers=headers, trust_env=True) as session:
-        # loop below will fetch data slices if not cached already concurrently up to the conecurrency limit
-        while offset < minutes_diff:
-            if len(fetch_data_tasks) >= FETCH_DATA_CONCURRENCY_LIMIT:
-                # if there are going to be more pending fetch data downloads than concurrency limit
-                # wait before adding another one
-                done, fetch_data_tasks = await asyncio.wait(fetch_data_tasks, return_when=asyncio.FIRST_COMPLETED)
-                # need to check the result that may throw if task finished with an error
-                done.pop().result()
+        try:
+            # loop below will fetch data slices if not cached already concurrently up to the adaptive limit
+            while offset < minutes_diff:
+                while len(fetch_data_tasks) >= ac.limit:
+                    # drain until in-flight count is below the current adaptive limit
+                    done, fetch_data_tasks = await asyncio.wait(fetch_data_tasks, return_when=asyncio.FIRST_COMPLETED)
+                    # retrieve all results so no "exception was never retrieved" warnings
+                    first_error = None
+                    for task in done:
+                        try:
+                            task.result()
+                        except Exception as ex:
+                            if first_error is None:
+                                first_error = ex
+                    ac.on_success()
+                    if first_error is not None:
+                        raise first_error
 
-            fetch_data_tasks.add(
-                asyncio.create_task(
-                    _fetch_data_if_not_cached(session, endpoint, cache_dir, exchange, from_date, offset, filters, http_proxy)
+                fetch_data_tasks.add(
+                    asyncio.create_task(
+                        _fetch_data_if_not_cached(session, endpoint, cache_dir, exchange, from_date, offset, filters, http_proxy, ac)
+                    )
                 )
-            )
-            offset += 1
+                offset += 1
 
-        # finally wait for the remaining fetch data download tasks
-        await asyncio.gather(*fetch_data_tasks)
+            # finally wait for the remaining fetch data download tasks
+            await asyncio.gather(*fetch_data_tasks)
+        except BaseException:
+            # cancel all pending tasks so they don't keep making requests
+            for task in fetch_data_tasks:
+                task.cancel()
+            # await them to suppress "Task was destroyed but it is pending" warnings
+            await asyncio.gather(*fetch_data_tasks, return_exceptions=True)
+            raise
 
         end_time = time()
 
@@ -73,19 +111,19 @@ async def fetch_data_to_replay(exchange, from_date, to_date, filters, endpoint, 
     )
 
 
-async def _fetch_data_if_not_cached(session, endpoint, cache_dir, exchange, from_date, offset, filters, http_proxy):
+async def _fetch_data_if_not_cached(session, endpoint, cache_dir, exchange, from_date, offset, filters, http_proxy, ac):
     slice_date = from_date + timedelta(seconds=offset * 60)
     cache_path = get_slice_cache_path(cache_dir, exchange, slice_date, filters)
 
     # fetch and cache slice only if it's not cached already
     if os.path.isfile(cache_path) == False:
-        await _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path, http_proxy)
+        await _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path, http_proxy, ac)
         logger.debug("fetched data slice for date %s from the API and cached - %s", slice_date, cache_path)
     else:
         logger.debug("data slice for date %s already in local cache - %s", slice_date, cache_path)
 
 
-async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path, http_proxy):
+async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date, offset, filters, cache_path, http_proxy, ac):
     fetch_url = f"{endpoint}/v1/data-feeds/{exchange}?from={from_date.isoformat()}&offset={offset}"
 
     if filters is not None and len(filters) > 0:
@@ -118,6 +156,7 @@ async def _reliably_fetch_and_cache_slice(session, endpoint, exchange, from_date
                     raise ex
                 if ex.code == 429:
                     too_many_requests = True
+                    ac.on_throttle()
 
             random_ingridient = random.random()
             attempts_delay = 2 ** attempts
@@ -142,15 +181,22 @@ async def _fetch_and_cache_slice(session, url, cache_path, http_proxy):
         # ensure that directory where we want to cache data slice exists
         pathlib.Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
         temp_cache_path = f"{cache_path}{secrets.token_hex(8)}.unconfirmed"
-        # write response stream to unconfirmed temp file
-        async with aiofiles.open(temp_cache_path, "wb") as temp_file:
-            async for data in response.content.iter_any():
-                await temp_file.write(data)
-
-        # rename temp file to desired name only if file has been fully and successfully saved
-        # it there is an error during renaming file it means that target file aready exists
-        # and we're fine as only successfully save files exist
         try:
-            os.rename(temp_cache_path, cache_path)
-        except Exception as ex:
-            logger.debug("_fetch_and_cache_slice rename error: %s", ex)
+            # write response stream to unconfirmed temp file
+            async with aiofiles.open(temp_cache_path, "wb") as temp_file:
+                async for data in response.content.iter_any():
+                    await temp_file.write(data)
+
+            # atomically replace temp file with the final cache path
+            try:
+                os.replace(temp_cache_path, cache_path)
+            except OSError as ex:
+                # if another task already wrote this file, that's fine
+                if os.path.isfile(cache_path):
+                    logger.debug("_fetch_and_cache_slice rename skipped, file already exists: %s", ex)
+                else:
+                    raise
+        finally:
+            # cleanup partial temp file on cancellation or error
+            if os.path.exists(temp_cache_path):
+                os.remove(temp_cache_path)

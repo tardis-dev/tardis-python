@@ -159,7 +159,7 @@ class TardisClient:
                 yield market_response
 
     def clear_cache(self):
-        shutil.rmtree(self.cache_dir)
+        shutil.rmtree(self.cache_dir, ignore_errors=True)
 
     def _validate_payload(self, exchange, from_date, to_date, filters):
         if from_date is None or self._try_parse_as_iso_date(from_date) is False:
