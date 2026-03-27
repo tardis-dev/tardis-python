@@ -1,12 +1,18 @@
 [tool.black]
 line-length = 125
 
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+markers = [
+    "live: tests that call live tardis.dev endpoints",
+]
+
 [tool.poetry]
-name = "tardis-client"
-version = "1.4.0"
+name = "tardis-dev"
+version = "3.0.0"
 description = "Python client for tardis.dev - historical tick-level cryptocurrency market data replay API."
 readme = "README.md"
-homepage = "https://github.com/tardis-dev/python-client"
+homepage = "https://github.com/tardis-dev/tardis-python"
 license = "MPL-2.0"
 authors = ["Thad <thad@tardis.dev>"]
 keywords = [ 
@@ -20,11 +26,17 @@ keywords = [
     "cryptocurrency api"]
 
 [tool.poetry.dependencies]
-python = ">=3.8,<4.0"
+python = ">=3.9,<4.0"
 aiohttp = ">=3.10.0"
+python-dateutil = "^2.8.2"
 aiofiles = "^24.1.0"
-sortedcontainers = "^2.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+pytest-asyncio = "^0.24.0"
+aioresponses = "^0.7.8"
+black = "^24.4.2"
 
 [build-system]
-requires = ["poetry>=0.12"]
-build-backend = "poetry.masonry.api"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

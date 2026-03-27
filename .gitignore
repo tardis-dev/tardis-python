@@ -5,4 +5,4 @@ _build
 __pycache__
 build/
 dist/
-tardis_client.egg-info
+*.egg-info

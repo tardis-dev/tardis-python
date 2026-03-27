@@ -1,2 +1,0 @@
-ASK = "ask"
-BID = "bid"
