@@ -6,7 +6,9 @@
 
 <br/>
 
-Python `tardis-dev` package provides convenient access to tick-level historical cryptocurrency market data in exchange-native format. It focuses on two primary workflows: replaying historical market data and downloading CSV datasets. If you need normalized replay or real-time streaming, use the Node.js client or Tardis Machine.
+Python `tardis-dev` package provides convenient access to tick-level historical cryptocurrency market data in exchange-native format. It focuses on two primary workflows: replaying historical market data and downloading historical market data as CSV files. If you need normalized replay or real-time streaming, use the Node.js client or Tardis Machine.
+
+`replay()` accepts ISO date strings or Python `datetime` values. Naive datetimes are treated as UTC.
 
 <br/>
 
@@ -37,7 +39,7 @@ asyncio.run(main())
 
 <br/>
 
-- [CSV dataset downloads](https://docs.tardis.dev/downloadable-csv-files/overview)
+- [historical market data downloads as CSV files](https://docs.tardis.dev/python-client/quickstart#csv-dataset-downloads)
 
 <br/>
 
@@ -64,7 +66,7 @@ pip install tardis-dev
 
 - [Quickstart](https://docs.tardis.dev/python-client/quickstart)
 - [Replaying Historical Data](https://docs.tardis.dev/python-client/replaying-historical-data)
-- [Downloadable CSV files](https://docs.tardis.dev/downloadable-csv-files/overview)
+- [CSV Dataset Downloads](https://docs.tardis.dev/python-client/quickstart#csv-dataset-downloads)
 - [Migration Notice](https://docs.tardis.dev/python-client/migration-notice)
 
 <br/>

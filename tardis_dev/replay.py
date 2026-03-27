@@ -29,8 +29,8 @@ class Response(NamedTuple):
 
 async def replay(
     exchange: str,
-    from_date: str,
-    to_date: str,
+    from_date: Union[str, datetime],
+    to_date: Union[str, datetime],
     filters: Optional[Sequence[Channel]] = None,
     *,
     api_key: str = "",
@@ -310,20 +310,28 @@ def _validate_replay_args(
             raise ValueError(f"Invalid 'symbols[]' argument: {channel.symbols}. Please provide list of symbol strings.")
 
 
-def _parse_date(name: str, value: str) -> datetime:
+def _parse_date(name: str, value: Union[str, datetime]) -> datetime:
     if value is None:
         raise ValueError(
             f"Invalid '{name}' argument: {value}. Please provide valid ISO date string. "
             "https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat"
         )
 
-    try:
-        return dateutil.parser.isoparse(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"Invalid '{name}' argument: {value}. Please provide valid ISO date string. "
-            "https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat"
-        ) from exc
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        try:
+            parsed = dateutil.parser.isoparse(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"Invalid '{name}' argument: {value}. Please provide valid ISO date string. "
+                "https://docs.python.org/3/library/datetime.html#datetime.date.fromisoformat"
+            ) from exc
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(timezone.utc)
 
 
 def _get_slice_cache_path(

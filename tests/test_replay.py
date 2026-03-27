@@ -1,6 +1,6 @@
 import importlib
 import gzip
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -126,6 +126,82 @@ def test_replay_rejects_invalid_filter_items():
 
 def test_replay_formats_query_date_as_utc_z():
     assert _format_replay_query_date(datetime.fromisoformat("2019-05-01T00:00:00+00:00")) == "2019-05-01T00:00:00.000Z"
+
+
+@pytest.mark.asyncio
+async def test_replay_accepts_naive_datetime_inputs_as_utc(monkeypatch, tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    filters = _live_replay_filters()
+    captured = {}
+
+    slice_path = Path(
+        _get_slice_cache_path(
+            str(cache_dir),
+            LIVE_REPLAY_EXCHANGE,
+            datetime(2019, 5, 1, 0, 0, tzinfo=timezone.utc),
+            filters,
+        )
+    )
+    slice_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with gzip.open(slice_path, "wb") as file:
+        file.write(b'2019-05-01T00:00:00.0000000Z {"table":"trade","action":"partial","data":[{"symbol":"BTCUSD"}]}\n')
+
+    async def fake_fetch_data_to_replay(**kwargs):
+        captured.update(kwargs)
+        return None
+
+    monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
+
+    results = []
+    async for item in replay(
+        exchange=LIVE_REPLAY_EXCHANGE,
+        from_date=datetime(2019, 5, 1, 0, 0),
+        to_date=datetime(2019, 5, 1, 0, 1),
+        filters=filters,
+        cache_dir=str(cache_dir),
+    ):
+        results.append(item)
+
+    assert len(results) == 1
+    assert captured["from_date"] == datetime(2019, 5, 1, 0, 0, tzinfo=timezone.utc)
+    assert captured["to_date"] == datetime(2019, 5, 1, 0, 1, tzinfo=timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_replay_converts_timezone_aware_datetime_inputs_to_utc(monkeypatch, tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    filters = _live_replay_filters()
+    captured = {}
+
+    utc_from_date = datetime(2019, 5, 1, 0, 0, tzinfo=timezone.utc)
+    utc_to_date = datetime(2019, 5, 1, 0, 1, tzinfo=timezone.utc)
+
+    slice_path = Path(_get_slice_cache_path(str(cache_dir), LIVE_REPLAY_EXCHANGE, utc_from_date, filters))
+    slice_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with gzip.open(slice_path, "wb") as file:
+        file.write(b'2019-05-01T00:00:00.0000000Z {"table":"trade","action":"partial","data":[{"symbol":"BTCUSD"}]}\n')
+
+    async def fake_fetch_data_to_replay(**kwargs):
+        captured.update(kwargs)
+        return None
+
+    monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
+
+    results = []
+    async for item in replay(
+        exchange=LIVE_REPLAY_EXCHANGE,
+        from_date=datetime(2019, 5, 1, 2, 0, tzinfo=timezone(timedelta(hours=2))),
+        to_date=datetime(2019, 5, 1, 2, 1, tzinfo=timezone(timedelta(hours=2))),
+        filters=filters,
+        cache_dir=str(cache_dir),
+    ):
+        results.append(item)
+
+    assert len(results) == 1
+    assert captured["from_date"] == utc_from_date
+    assert captured["to_date"] == utc_to_date
 
 
 @pytest.mark.asyncio
