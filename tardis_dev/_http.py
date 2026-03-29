@@ -118,7 +118,7 @@ async def _download(
             content_encoding = response.headers.get("Content-Encoding")
             if content_encoding == "zstd":
                 final_path = f"{dest_path}.zst"
-            elif content_encoding == "gzip":
+            elif content_encoding is None or content_encoding == "gzip":
                 final_path = f"{dest_path}.gz"
             else:
                 raise urllib.error.HTTPError(

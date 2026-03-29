@@ -20,10 +20,17 @@ replay_module = importlib.import_module("tardis_dev.replay")
 LIVE_REPLAY_EXCHANGE = "bitmex"
 LIVE_REPLAY_FROM = "2019-05-01T00:00:00.000Z"
 LIVE_REPLAY_TO = "2019-05-01T00:01:00.000Z"
+LIVE_EMPTY_REPLAY_EXCHANGE = "binance"
+LIVE_EMPTY_REPLAY_FROM = "2019-06-01T00:00:00.000Z"
+LIVE_EMPTY_REPLAY_TO = "2019-06-01T00:01:00.000Z"
 
 
 def _live_replay_filters():
     return [Channel("trade", ["BTCUSD"])]
+
+
+def _live_empty_replay_filters():
+    return [Channel("trade", ["batpax"])]
 
 
 class _FakeSession:
@@ -88,6 +95,23 @@ async def test_replay_auto_cleanup_removes_live_processed_slices(tmp_path: Path)
     assert len(results) > 0
     assert not slice_path.exists()
     assert not day_dir.exists()
+
+
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_replay_live_empty_slice_yields_no_messages(tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    results = []
+    async for item in replay(
+        exchange=LIVE_EMPTY_REPLAY_EXCHANGE,
+        from_date=LIVE_EMPTY_REPLAY_FROM,
+        to_date=LIVE_EMPTY_REPLAY_TO,
+        filters=_live_empty_replay_filters(),
+        cache_dir=str(cache_dir),
+    ):
+        results.append(item)
+
+    assert results == []
 
 
 def test_replay_rejects_invalid_date_order():

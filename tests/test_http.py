@@ -31,6 +31,22 @@ async def test_reliable_download_appends_zstd_extension_for_replay_cache(tmp_pat
 
 
 @pytest.mark.asyncio
+async def test_reliable_download_falls_back_to_gzip_extension_when_content_encoding_is_missing(tmp_path: Path):
+    destination = tmp_path / "slice.json"
+    url = "https://example.com/data"
+
+    with aioresponses() as mocked:
+        mocked.get(url, body=b"")
+
+        async with await create_session("", 5) as session:
+            final_path = await reliable_download(session, url, str(destination), append_content_encoding_extension=True)
+
+    assert final_path.endswith(".gz")
+    assert Path(final_path).read_bytes() == b""
+    assert not destination.exists()
+
+
+@pytest.mark.asyncio
 async def test_reliable_download_uses_node_backoff_for_500(tmp_path: Path, monkeypatch):
     destination = tmp_path / "slice.json.gz"
     url = "https://example.com/data"
