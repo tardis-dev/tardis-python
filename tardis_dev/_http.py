@@ -14,11 +14,11 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 
-async def create_session(api_key: str, timeout: int) -> aiohttp.ClientSession:
+async def create_session(api_key: str, timeout: int, accept_encoding: str = "gzip") -> aiohttp.ClientSession:
     from tardis_dev import __version__
 
     headers = {
-        "Accept-Encoding": "gzip",
+        "Accept-Encoding": accept_encoding,
         "User-Agent": f"tardis-dev/{__version__} (+https://github.com/tardis-dev/tardis-python)",
     }
     if api_key:
@@ -38,14 +38,20 @@ async def reliable_download(
     dest_path: str,
     http_proxy: Optional[str] = None,
     max_attempts: int = 30,
-) -> None:
+    append_content_encoding_extension: bool = False,
+) -> str:
     attempts = 0
 
     while True:
         attempts += 1
         try:
-            await _download(session, _get_retry_url(url, attempts), dest_path, http_proxy)
-            return
+            return await _download(
+                session,
+                _get_retry_url(url, attempts),
+                dest_path,
+                http_proxy,
+                append_content_encoding_extension=append_content_encoding_extension,
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -99,11 +105,29 @@ async def _download(
     url: str,
     dest_path: str,
     http_proxy: Optional[str],
-) -> None:
+    *,
+    append_content_encoding_extension: bool,
+) -> str:
     async with session.get(url, proxy=http_proxy) as response:
         if response.status != 200:
             error_text = await response.text()
             raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=None, fp=None)
+
+        final_path = dest_path
+        if append_content_encoding_extension:
+            content_encoding = response.headers.get("Content-Encoding")
+            if content_encoding == "zstd":
+                final_path = f"{dest_path}.zst"
+            elif content_encoding == "gzip":
+                final_path = f"{dest_path}.gz"
+            else:
+                raise urllib.error.HTTPError(
+                    url,
+                    code=400,
+                    msg=f"Unsupported data feed content encoding: {content_encoding}",
+                    hdrs=None,
+                    fp=None,
+                )
 
         pathlib.Path(dest_path).parent.mkdir(parents=True, exist_ok=True)
         temp_path = f"{dest_path}{secrets.token_hex(8)}.unconfirmed"
@@ -113,7 +137,8 @@ async def _download(
                 async for chunk in response.content.iter_any():
                     await temp_file.write(chunk)
 
-            os.replace(temp_path, dest_path)
+            os.replace(temp_path, final_path)
+            return final_path
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)

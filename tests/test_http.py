@@ -8,9 +8,26 @@ from tardis_dev._http import create_session, reliable_download
 
 
 @pytest.mark.asyncio
-async def test_create_session_omits_authorization_header_when_api_key_missing():
-    async with await create_session("", 5) as session:
+async def test_create_session_uses_requested_accept_encoding_and_omits_authorization_header_when_api_key_missing():
+    async with await create_session("", 5, "zstd, gzip") as session:
         assert "Authorization" not in session.headers
+        assert session.headers["Accept-Encoding"] == "zstd, gzip"
+
+
+@pytest.mark.asyncio
+async def test_reliable_download_appends_zstd_extension_for_replay_cache(tmp_path: Path):
+    destination = tmp_path / "slice.json"
+    url = "https://example.com/data"
+
+    with aioresponses() as mocked:
+        mocked.get(url, body=b"payload", headers={"Content-Encoding": "zstd"})
+
+        async with await create_session("", 5) as session:
+            final_path = await reliable_download(session, url, str(destination), append_content_encoding_extension=True)
+
+    assert final_path.endswith(".zst")
+    assert Path(final_path).read_bytes() == b"payload"
+    assert not destination.exists()
 
 
 @pytest.mark.asyncio

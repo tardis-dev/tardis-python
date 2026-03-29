@@ -1,6 +1,7 @@
 import asyncio
 import gzip
 import hashlib
+import io
 import json as json_module
 import logging
 import os
@@ -11,6 +12,7 @@ from time import time
 from typing import Any, AsyncIterator, Dict, List, NamedTuple, Optional, Sequence, Union
 
 import dateutil.parser
+import zstandard
 
 from tardis_dev._http import create_session, reliable_download
 from tardis_dev._options import DEFAULT_CACHE_DIR, DEFAULT_ENDPOINT
@@ -84,7 +86,15 @@ async def replay(
 
             while current_slice_path is None:
                 await asyncio.sleep(0)
-                path_to_check = _get_slice_cache_path(
+                zstd_path = _get_slice_cache_path(
+                    cache_dir,
+                    exchange,
+                    current_slice_date,
+                    normalized_filters,
+                    filters_hash=filters_hash,
+                    content_encoding="zstd",
+                )
+                gzip_path = _get_slice_cache_path(
                     cache_dir,
                     exchange,
                     current_slice_date,
@@ -95,26 +105,27 @@ async def replay(
                 if fetch_data_task.done() and fetch_data_task.exception():
                     raise fetch_data_task.exception()
 
-                if os.path.isfile(path_to_check):
-                    current_slice_path = path_to_check
+                if os.path.isfile(zstd_path):
+                    current_slice_path = zstd_path
+                elif os.path.isfile(gzip_path):
+                    current_slice_path = gzip_path
                 else:
                     await asyncio.sleep(0.1)
 
-            with gzip.open(current_slice_path, "rb") as file:
-                for line in file:
-                    if len(line) <= 1:
-                        if with_disconnects and not last_message_was_disconnect:
-                            last_message_was_disconnect = True
-                            yield None
-                        continue
+            for line in _iterate_slice_lines(current_slice_path):
+                if len(line) <= 1:
+                    if with_disconnects and not last_message_was_disconnect:
+                        last_message_was_disconnect = True
+                        yield None
+                    continue
 
-                    last_message_was_disconnect = False
+                last_message_was_disconnect = False
 
-                    if decode_response:
-                        timestamp = datetime.fromisoformat(line[0 : DATE_MESSAGE_SPLIT_INDEX - 2].decode("utf-8"))
-                        yield Response(timestamp, json.loads(line[DATE_MESSAGE_SPLIT_INDEX + 1 :]))
-                    else:
-                        yield Response(line[0:DATE_MESSAGE_SPLIT_INDEX], line[DATE_MESSAGE_SPLIT_INDEX + 1 :])
+                if decode_response:
+                    timestamp = datetime.fromisoformat(line[0 : DATE_MESSAGE_SPLIT_INDEX - 2].decode("utf-8"))
+                    yield Response(timestamp, json.loads(line[DATE_MESSAGE_SPLIT_INDEX + 1 :]))
+                else:
+                    yield Response(line[0:DATE_MESSAGE_SPLIT_INDEX], line[DATE_MESSAGE_SPLIT_INDEX + 1 :])
 
             if auto_cleanup:
                 _remove_processed_slice(current_slice_path)
@@ -167,7 +178,7 @@ async def _fetch_data_to_replay(
     if minutes_diff <= 0:
         return
 
-    async with await create_session(api_key, timeout) as session:
+    async with await create_session(api_key, timeout, "zstd, gzip") as session:
         fetch_data_tasks = set()
         try:
             prefetch_offsets = [minutes_diff - 1]
@@ -231,9 +242,23 @@ async def _fetch_slice_if_not_cached(
     filters_hash: str,
 ) -> None:
     slice_date = from_date + timedelta(minutes=offset)
-    cache_path = _get_slice_cache_path(cache_dir, exchange, slice_date, filters, filters_hash=filters_hash)
+    cache_zstd_path = _get_slice_cache_path(
+        cache_dir,
+        exchange,
+        slice_date,
+        filters,
+        filters_hash=filters_hash,
+        content_encoding="zstd",
+    )
+    cache_gzip_path = _get_slice_cache_path(
+        cache_dir,
+        exchange,
+        slice_date,
+        filters,
+        filters_hash=filters_hash,
+    )
 
-    if os.path.isfile(cache_path):
+    if os.path.isfile(cache_zstd_path) or os.path.isfile(cache_gzip_path):
         return
 
     fetch_url = f"{endpoint}/data-feeds/{exchange}?from={_format_replay_query_date(from_date)}&offset={offset}"
@@ -242,11 +267,14 @@ async def _fetch_slice_if_not_cached(
         filters_url_encoded = urllib.parse.quote(filters_serialized, safe="~()*!.'")
         fetch_url += f"&filters={filters_url_encoded}"
 
+    cache_base_path = cache_gzip_path.removesuffix(".gz")
+
     await reliable_download(
         session=session,
         url=fetch_url,
-        dest_path=cache_path,
+        dest_path=cache_base_path,
         http_proxy=http_proxy,
+        append_content_encoding_extension=True,
     )
 
 
@@ -341,16 +369,14 @@ def _get_slice_cache_path(
     filters: Optional[Sequence[Channel]],
     *,
     filters_hash: Optional[str] = None,
+    content_encoding: Optional[str] = None,
 ) -> str:
-    return (
-        os.path.join(
-            cache_dir,
-            "feeds",
-            exchange,
-            filters_hash if filters_hash is not None else _get_filters_hash(filters),
-            _format_date_to_path(date),
-        )
-        + ".json.gz"
+    return os.path.join(
+        cache_dir,
+        "feeds",
+        exchange,
+        filters_hash if filters_hash is not None else _get_filters_hash(filters),
+        f"{_format_date_to_path(date)}.json{'.zst' if content_encoding == 'zstd' else '.gz'}",
     )
 
 
@@ -403,6 +429,18 @@ def _double_digit(value: int) -> str:
 def _remove_processed_slice(path: str) -> None:
     if os.path.exists(path):
         os.remove(path)
+
+
+def _iterate_slice_lines(path: str):
+    if path.endswith(".zst"):
+        with open(path, "rb") as compressed_file:
+            with zstandard.ZstdDecompressor().stream_reader(compressed_file) as file:
+                with io.BufferedReader(file) as buffered_file:
+                    yield from buffered_file
+        return
+
+    with gzip.open(path, "rb") as file:
+        yield from file
 
 
 def _clear_replay_cache_range(

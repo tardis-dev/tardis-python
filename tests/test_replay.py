@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+import zstandard
 
 from tardis_dev import Channel, replay
 from tardis_dev.replay import (
@@ -111,6 +112,48 @@ def test_replay_cache_path_uses_normalized_filter_hash():
         {"channel": "book", "symbols": None},
         {"channel": "trade", "symbols": ["BTCUSD", "ETHUSD"]},
     ]
+
+
+@pytest.mark.asyncio
+async def test_replay_prefers_zstd_cache_path_when_available(monkeypatch, tmp_path: Path):
+    filters = _live_replay_filters()
+    gzip_path = Path(_get_slice_cache_path(str(tmp_path), LIVE_REPLAY_EXCHANGE, datetime(2019, 5, 1, 0, 0), filters))
+    zstd_path = Path(
+        _get_slice_cache_path(
+            str(tmp_path),
+            LIVE_REPLAY_EXCHANGE,
+            datetime(2019, 5, 1, 0, 0),
+            filters,
+            content_encoding="zstd",
+        )
+    )
+    gzip_path.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(gzip_path, "wb") as file:
+        file.write(b'2019-05-01T00:00:00.0000000Z {"table":"trade","source":"gzip"}\n')
+    zstd_path.write_bytes(
+        zstandard.ZstdCompressor().compress(
+            b'2019-05-01T00:00:00.0000000Z {"table":"trade","source":"zstd"}\n'
+        )
+    )
+
+    async def fake_fetch_data_to_replay(**kwargs):
+        return None
+
+    monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
+
+    results = []
+    async for item in replay(
+        exchange=LIVE_REPLAY_EXCHANGE,
+        from_date=LIVE_REPLAY_FROM,
+        to_date=LIVE_REPLAY_TO,
+        filters=filters,
+        cache_dir=str(tmp_path),
+    ):
+        results.append(item)
+
+    assert len(results) == 1
+    assert results[0] is not None
+    assert results[0].message["source"] == "zstd"
 
 
 def test_replay_rejects_invalid_filter_items():
@@ -246,10 +289,50 @@ async def test_replay_raw_mode_returns_bytes(monkeypatch, tmp_path: Path):
 
 
 @pytest.mark.asyncio
+async def test_replay_reads_zstd_cached_slice(monkeypatch, tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    filters = _live_replay_filters()
+    slice_path = Path(
+        _get_slice_cache_path(
+            str(cache_dir),
+            LIVE_REPLAY_EXCHANGE,
+            datetime(2019, 5, 1, 0, 0),
+            filters,
+            content_encoding="zstd",
+        )
+    )
+    slice_path.parent.mkdir(parents=True, exist_ok=True)
+    slice_path.write_bytes(
+        zstandard.ZstdCompressor().compress(
+            b'2019-05-01T00:00:00.0000000Z {"table":"trade","action":"partial","data":[{"symbol":"BTCUSD"}]}\n'
+        )
+    )
+
+    async def fake_fetch_data_to_replay(**kwargs):
+        return None
+
+    monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
+
+    results = []
+    async for item in replay(
+        exchange=LIVE_REPLAY_EXCHANGE,
+        from_date=LIVE_REPLAY_FROM,
+        to_date=LIVE_REPLAY_TO,
+        filters=filters,
+        cache_dir=str(cache_dir),
+    ):
+        results.append(item)
+
+    assert len(results) == 1
+    assert results[0] is not None
+    assert results[0].message["table"] == "trade"
+
+
+@pytest.mark.asyncio
 async def test_fetch_data_to_replay_prefetches_last_then_first(monkeypatch):
     offsets = []
 
-    async def fake_create_session(api_key: str, timeout: int):
+    async def fake_create_session(api_key: str, timeout: int, accept_encoding: str):
         return _FakeSession()
 
     async def fake_fetch_slice_if_not_cached(**kwargs):
