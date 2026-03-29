@@ -131,9 +131,7 @@ async def test_replay_prefers_zstd_cache_path_when_available(monkeypatch, tmp_pa
     with gzip.open(gzip_path, "wb") as file:
         file.write(b'2019-05-01T00:00:00.0000000Z {"table":"trade","source":"gzip"}\n')
     zstd_path.write_bytes(
-        zstandard.ZstdCompressor().compress(
-            b'2019-05-01T00:00:00.0000000Z {"table":"trade","source":"zstd"}\n'
-        )
+        zstandard.ZstdCompressor().compress(b'2019-05-01T00:00:00.0000000Z {"table":"trade","source":"zstd"}\n')
     )
 
     async def fake_fetch_data_to_replay(**kwargs):
