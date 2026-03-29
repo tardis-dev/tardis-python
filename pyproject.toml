@@ -9,7 +9,7 @@ markers = [
 
 [tool.poetry]
 name = "tardis-dev"
-version = "3.2.0"
+version = "3.3.0"
 description = "Python client for tardis.dev - historical tick-level cryptocurrency market data replay API."
 readme = "README.md"
 homepage = "https://github.com/tardis-dev/tardis-python"
