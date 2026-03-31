@@ -2,6 +2,7 @@
 _build
 .DS_Store
 .vscode
+.venv
 __pycache__
 build/
 dist/

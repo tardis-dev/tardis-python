@@ -60,6 +60,20 @@ pip install tardis-dev
 <br/>
 <br/>
 
+## Development
+
+This repository uses [`uv`](https://docs.astral.sh/uv/) for dependency management, locking, builds, and release automation.
+
+```bash
+uv sync --locked --group dev
+uv run black --check tardis_dev tests
+uv run pytest tests/ -q -m "not live"
+uv build --no-sources
+```
+
+<br/>
+<br/>
+
 ## Documentation
 
 ### [See official docs](https://docs.tardis.dev/python-client/quickstart)
