@@ -9,7 +9,7 @@ markers = [
 
 [project]
 name = "tardis-dev"
-version = "3.3.0"
+version = "3.4.0"
 description = "Python client for tardis.dev - historical tick-level cryptocurrency market data replay API."
 readme = "README.md"
 requires-python = ">=3.9,<4.0"
