@@ -7,7 +7,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-03-24T13:44:22.972215156Z"
+exclude-newer = "2026-04-07T14:29:37.737831563Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -879,7 +879,7 @@ wheels = [
 
 [[package]]
 name = "tardis-dev"
-version = "3.4.0"
+version = "4.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
