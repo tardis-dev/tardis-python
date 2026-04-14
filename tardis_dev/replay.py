@@ -9,7 +9,7 @@ import shutil
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from time import time
-from typing import Any, AsyncIterator, Dict, List, NamedTuple, Optional, Sequence, Union
+from typing import Any, AsyncIterator, Dict, List, Literal, NamedTuple, Optional, Sequence, Union
 
 import dateutil.parser
 import zstandard
@@ -22,6 +22,7 @@ from tardis_dev.channel import Channel
 logger = logging.getLogger(__name__)
 
 DATE_MESSAGE_SPLIT_INDEX = 28
+ReplayCompression = Literal["gzip", "zstd"]
 
 
 class Response(NamedTuple):
@@ -40,6 +41,7 @@ async def replay(
     endpoint: str = DEFAULT_ENDPOINT,
     timeout: int = 60,
     http_proxy: Optional[str] = None,
+    compression: ReplayCompression = "zstd",
     decode_response: bool = True,
     with_disconnects: bool = False,
     auto_cleanup: bool = False,
@@ -77,6 +79,7 @@ async def replay(
             timeout=timeout,
             http_proxy=http_proxy,
             filters_hash=filters_hash,
+            compression=compression,
         )
     )
 
@@ -171,6 +174,7 @@ async def _fetch_data_to_replay(
     timeout: int,
     http_proxy: Optional[str],
     filters_hash: str,
+    compression: ReplayCompression = "zstd",
 ) -> None:
     minutes_diff = int(round((to_date - from_date).total_seconds() / 60))
     concurrency_limit = 60
@@ -178,7 +182,7 @@ async def _fetch_data_to_replay(
     if minutes_diff <= 0:
         return
 
-    async with await create_session(api_key, timeout, "zstd, gzip") as session:
+    async with await create_session(api_key, timeout, "gzip" if compression == "gzip" else "zstd, gzip") as session:
         fetch_data_tasks = set()
         try:
             prefetch_offsets = [minutes_diff - 1]
@@ -196,6 +200,7 @@ async def _fetch_data_to_replay(
                     filters=filters,
                     http_proxy=http_proxy,
                     filters_hash=filters_hash,
+                    compression=compression,
                 )
 
             for offset in range(1, minutes_diff - 1):
@@ -216,6 +221,7 @@ async def _fetch_data_to_replay(
                             filters=filters,
                             http_proxy=http_proxy,
                             filters_hash=filters_hash,
+                            compression=compression,
                         )
                     )
                 )
@@ -240,6 +246,7 @@ async def _fetch_slice_if_not_cached(
     filters: Optional[Sequence[Channel]],
     http_proxy: Optional[str],
     filters_hash: str,
+    compression: ReplayCompression = "zstd",
 ) -> None:
     slice_date = from_date + timedelta(minutes=offset)
     cache_zstd_path = _get_slice_cache_path(
@@ -261,7 +268,10 @@ async def _fetch_slice_if_not_cached(
     if os.path.isfile(cache_zstd_path) or os.path.isfile(cache_gzip_path):
         return
 
-    fetch_url = f"{endpoint}/data-feeds/{exchange}?from={_format_replay_query_date(from_date)}&offset={offset}"
+    fetch_url = (
+        f"{endpoint}/data-feeds/{exchange}?from={_format_replay_query_date(from_date)}"
+        f"&offset={offset}&compression={compression}"
+    )
     if filters:
         filters_serialized = json_module.dumps(_serialize_normalized_filters(filters), separators=(",", ":"))
         filters_url_encoded = urllib.parse.quote(filters_serialized, safe="~()*!.'")
