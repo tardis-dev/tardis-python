@@ -39,7 +39,8 @@ async def reliable_download(
     http_proxy: Optional[str] = None,
     max_attempts: int = 30,
     append_content_encoding_extension: bool = False,
-) -> str:
+    return_headers: bool = False,
+):
     attempts = 0
 
     while True:
@@ -51,6 +52,7 @@ async def reliable_download(
                 dest_path,
                 http_proxy,
                 append_content_encoding_extension=append_content_encoding_extension,
+                return_headers=return_headers,
             )
         except asyncio.CancelledError:
             raise
@@ -107,12 +109,14 @@ async def _download(
     http_proxy: Optional[str],
     *,
     append_content_encoding_extension: bool,
-) -> str:
+    return_headers: bool,
+):
     async with session.get(url, proxy=http_proxy) as response:
         if response.status != 200:
             error_text = await response.text()
             raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=None, fp=None)
 
+        headers = {key.lower(): value for key, value in response.headers.items()}
         final_path = dest_path
         if append_content_encoding_extension:
             content_encoding = response.headers.get("Content-Encoding")
@@ -138,6 +142,8 @@ async def _download(
                     await temp_file.write(chunk)
 
             os.replace(temp_path, final_path)
+            if return_headers:
+                return final_path, headers
             return final_path
         finally:
             if os.path.exists(temp_path):

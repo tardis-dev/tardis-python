@@ -8,6 +8,8 @@ import zstandard
 
 from tardis_dev import Channel, replay
 from tardis_dev.replay import (
+    CachedSlice,
+    SliceDownloadResult,
     _fetch_data_to_replay,
     _format_replay_query_date,
     _get_filters_hash,
@@ -20,6 +22,7 @@ replay_module = importlib.import_module("tardis_dev.replay")
 LIVE_REPLAY_EXCHANGE = "bitmex"
 LIVE_REPLAY_FROM = "2019-05-01T00:00:00.000Z"
 LIVE_REPLAY_TO = "2019-05-01T00:01:00.000Z"
+LIVE_MULTI_SLICE_REPLAY_TO = "2019-05-01T00:12:00.000Z"
 LIVE_EMPTY_REPLAY_EXCHANGE = "binance"
 LIVE_EMPTY_REPLAY_FROM = "2019-06-01T00:00:00.000Z"
 LIVE_EMPTY_REPLAY_TO = "2019-06-01T00:01:00.000Z"
@@ -33,12 +36,20 @@ def _live_empty_replay_filters():
     return [Channel("trade", ["batpax"])]
 
 
+def _live_multi_slice_replay_filters():
+    return [Channel("trade", ["ETHUSD"])]
+
+
 class _FakeSession:
     async def __aenter__(self):
         return object()
 
     async def __aexit__(self, exc_type, exc, tb):
         return False
+
+
+def _cache_slice(cached_slices, slice_date: datetime, path: Path, slice_size: int = 1):
+    cached_slices[slice_date] = CachedSlice(str(path), slice_size)
 
 
 @pytest.mark.live
@@ -114,6 +125,43 @@ async def test_replay_live_empty_slice_yields_no_messages(tmp_path: Path):
     assert results == []
 
 
+@pytest.mark.live
+@pytest.mark.asyncio
+async def test_replay_live_data_reuses_multi_minute_slice_cache(tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    filters = _live_multi_slice_replay_filters()
+
+    first_results = []
+    async for item in replay(
+        exchange=LIVE_REPLAY_EXCHANGE,
+        from_date=LIVE_REPLAY_FROM,
+        to_date=LIVE_MULTI_SLICE_REPLAY_TO,
+        filters=filters,
+        cache_dir=str(cache_dir),
+        decode_response=False,
+    ):
+        first_results.append(item)
+
+    multi_slice_paths = sorted(cache_dir.glob("feeds/**/*.size-*.json.*"))
+    cached_paths = sorted(path.relative_to(cache_dir) for path in cache_dir.glob("feeds/**/*.json.*"))
+
+    second_results = []
+    async for item in replay(
+        exchange=LIVE_REPLAY_EXCHANGE,
+        from_date=LIVE_REPLAY_FROM,
+        to_date=LIVE_MULTI_SLICE_REPLAY_TO,
+        filters=filters,
+        cache_dir=str(cache_dir),
+        decode_response=False,
+    ):
+        second_results.append(item)
+
+    assert len(first_results) > 0
+    assert len(second_results) == len(first_results)
+    assert len(multi_slice_paths) > 0
+    assert sorted(path.relative_to(cache_dir) for path in cache_dir.glob("feeds/**/*.json.*")) == cached_paths
+
+
 def test_replay_rejects_invalid_date_order():
     async def collect():
         async for _ in replay(exchange="bitmex", from_date="2019-06-02", to_date="2019-06-01"):
@@ -159,6 +207,7 @@ async def test_replay_prefers_zstd_cache_path_when_available(monkeypatch, tmp_pa
     )
 
     async def fake_fetch_data_to_replay(**kwargs):
+        _cache_slice(kwargs["cached_slices"], datetime(2019, 5, 1, 0, 0, tzinfo=timezone.utc), zstd_path)
         return None
 
     monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
@@ -214,6 +263,7 @@ async def test_replay_accepts_naive_datetime_inputs_as_utc(monkeypatch, tmp_path
 
     async def fake_fetch_data_to_replay(**kwargs):
         captured.update(kwargs)
+        _cache_slice(kwargs["cached_slices"], datetime(2019, 5, 1, 0, 0, tzinfo=timezone.utc), slice_path)
         return None
 
     monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
@@ -250,6 +300,7 @@ async def test_replay_converts_timezone_aware_datetime_inputs_to_utc(monkeypatch
 
     async def fake_fetch_data_to_replay(**kwargs):
         captured.update(kwargs)
+        _cache_slice(kwargs["cached_slices"], utc_from_date, slice_path)
         return None
 
     monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
@@ -287,6 +338,7 @@ async def test_replay_raw_mode_returns_bytes(monkeypatch, tmp_path: Path):
         file.write(b'2019-05-01T00:00:00.0000000Z {"table":"trade","action":"partial","data":[{"symbol":"BTCUSD"}]}\n')
 
     async def fake_fetch_data_to_replay(**kwargs):
+        _cache_slice(kwargs["cached_slices"], datetime(2019, 5, 1, 0, 0, tzinfo=timezone.utc), slice_path)
         return None
 
     monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
@@ -331,6 +383,7 @@ async def test_replay_reads_zstd_cached_slice(monkeypatch, tmp_path: Path):
     )
 
     async def fake_fetch_data_to_replay(**kwargs):
+        _cache_slice(kwargs["cached_slices"], datetime(2019, 5, 1, 0, 0, tzinfo=timezone.utc), slice_path)
         return None
 
     monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
@@ -352,13 +405,14 @@ async def test_replay_reads_zstd_cached_slice(monkeypatch, tmp_path: Path):
 
 @pytest.mark.asyncio
 async def test_fetch_data_to_replay_prefetches_last_then_first(monkeypatch):
-    offsets = []
+    calls = []
 
     async def fake_create_session(api_key: str, timeout: int, accept_encoding: str):
         return _FakeSession()
 
     async def fake_fetch_slice_if_not_cached(**kwargs):
-        offsets.append(kwargs["offset"])
+        calls.append((kwargs["offset"], kwargs["requested_slice_size"], kwargs["use_cache"]))
+        return SliceDownloadResult(kwargs["requested_slice_size"], 3)
 
     monkeypatch.setattr(replay_module, "create_session", fake_create_session)
     monkeypatch.setattr(replay_module, "_fetch_slice_if_not_cached", fake_fetch_slice_if_not_cached)
@@ -366,8 +420,8 @@ async def test_fetch_data_to_replay_prefetches_last_then_first(monkeypatch):
     await _fetch_data_to_replay(
         exchange="bitmex",
         from_date=datetime(2019, 6, 1, 0, 0),
-        to_date=datetime(2019, 6, 1, 0, 4),
-        filters=None,
+        to_date=datetime(2019, 6, 1, 0, 6),
+        filters=[Channel("trade", ["BTCUSD"])],
         endpoint="https://api.tardis.dev/v1",
         cache_dir="/tmp/cache",
         api_key="",
@@ -376,5 +430,4 @@ async def test_fetch_data_to_replay_prefetches_last_then_first(monkeypatch):
         filters_hash="hash",
     )
 
-    assert offsets[:2] == [3, 0]
-    assert sorted(offsets[2:]) == [1, 2]
+    assert calls == [(5, 1, False), (0, 1, False), (1, 3, True), (4, 1, True)]

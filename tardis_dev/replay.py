@@ -23,11 +23,22 @@ logger = logging.getLogger(__name__)
 
 DATE_MESSAGE_SPLIT_INDEX = 28
 ReplayCompression = Literal["gzip", "zstd"]
+DEFAULT_DATA_FEED_SLICE_SIZE = 1
 
 
 class Response(NamedTuple):
     local_timestamp: Union[datetime, bytes]
     message: Union[Any, bytes]
+
+
+class CachedSlice(NamedTuple):
+    path: str
+    slice_size: int
+
+
+class SliceDownloadResult(NamedTuple):
+    slice_size: int
+    suggested_slice_size: int
 
 
 async def replay(
@@ -56,6 +67,7 @@ async def replay(
     parsed_from_date = parsed_from_date.replace(second=0, microsecond=0)
     parsed_to_date = parsed_to_date.replace(second=0, microsecond=0)
     current_slice_date = parsed_from_date
+    cached_slices: Dict[datetime, CachedSlice] = {}
     start_time = time()
     last_message_was_disconnect = False
 
@@ -80,41 +92,25 @@ async def replay(
             http_proxy=http_proxy,
             filters_hash=filters_hash,
             compression=compression,
+            cached_slices=cached_slices,
         )
     )
 
     try:
         while current_slice_date < parsed_to_date:
-            current_slice_path = None
+            current_slice = None
 
-            while current_slice_path is None:
+            while current_slice is None:
                 await asyncio.sleep(0)
-                zstd_path = _get_slice_cache_path(
-                    cache_dir,
-                    exchange,
-                    current_slice_date,
-                    normalized_filters,
-                    filters_hash=filters_hash,
-                    content_encoding="zstd",
-                )
-                gzip_path = _get_slice_cache_path(
-                    cache_dir,
-                    exchange,
-                    current_slice_date,
-                    normalized_filters,
-                    filters_hash=filters_hash,
-                )
 
                 if fetch_data_task.done() and fetch_data_task.exception():
                     raise fetch_data_task.exception()
 
-                if os.path.isfile(zstd_path):
-                    current_slice_path = zstd_path
-                elif os.path.isfile(gzip_path):
-                    current_slice_path = gzip_path
-                else:
+                current_slice = cached_slices.get(current_slice_date)
+                if current_slice is None:
                     await asyncio.sleep(0.1)
 
+            current_slice_path = current_slice.path
             for line in _iterate_slice_lines(current_slice_path):
                 if len(line) <= 1:
                     if with_disconnects and not last_message_was_disconnect:
@@ -133,7 +129,8 @@ async def replay(
             if auto_cleanup:
                 _remove_processed_slice(current_slice_path)
 
-            current_slice_date = current_slice_date + timedelta(minutes=1)
+            cached_slices.pop(current_slice_date, None)
+            current_slice_date = current_slice_date + timedelta(minutes=current_slice.slice_size)
 
         await fetch_data_task
     finally:
@@ -175,6 +172,7 @@ async def _fetch_data_to_replay(
     http_proxy: Optional[str],
     filters_hash: str,
     compression: ReplayCompression = "zstd",
+    cached_slices: Optional[Dict[datetime, CachedSlice]] = None,
 ) -> None:
     minutes_diff = int(round((to_date - from_date).total_seconds() / 60))
     concurrency_limit = 60
@@ -183,27 +181,53 @@ async def _fetch_data_to_replay(
         return
 
     async with await create_session(api_key, timeout, "gzip" if compression == "gzip" else "zstd, gzip") as session:
+        replay_cached_slices = cached_slices if cached_slices is not None else {}
         fetch_data_tasks = set()
         try:
-            prefetch_offsets = [minutes_diff - 1]
-            if minutes_diff > 1:
-                prefetch_offsets.append(0)
-
-            for offset in prefetch_offsets:
-                await _fetch_slice_if_not_cached(
+            last_slice = await _fetch_slice_if_not_cached(
+                session=session,
+                endpoint=endpoint,
+                cache_dir=cache_dir,
+                exchange=exchange,
+                from_date=from_date,
+                offset=minutes_diff - 1,
+                filters=filters,
+                http_proxy=http_proxy,
+                filters_hash=filters_hash,
+                compression=compression,
+                cached_slices=replay_cached_slices,
+                requested_slice_size=DEFAULT_DATA_FEED_SLICE_SIZE,
+                use_cache=False,
+            )
+            first_slice = (
+                last_slice
+                if minutes_diff == 1
+                else await _fetch_slice_if_not_cached(
                     session=session,
                     endpoint=endpoint,
                     cache_dir=cache_dir,
                     exchange=exchange,
                     from_date=from_date,
-                    offset=offset,
+                    offset=0,
                     filters=filters,
                     http_proxy=http_proxy,
                     filters_hash=filters_hash,
                     compression=compression,
+                    cached_slices=replay_cached_slices,
+                    requested_slice_size=DEFAULT_DATA_FEED_SLICE_SIZE,
+                    use_cache=False,
                 )
+            )
 
-            for offset in range(1, minutes_diff - 1):
+            replay_slice_size = (
+                DEFAULT_DATA_FEED_SLICE_SIZE
+                if not filters
+                else max(first_slice.suggested_slice_size, last_slice.suggested_slice_size)
+            )
+
+            offset = 1
+            while offset < minutes_diff - 1:
+                requested_slice_size = min(replay_slice_size, minutes_diff - 1 - offset)
                 while len(fetch_data_tasks) >= concurrency_limit:
                     done, fetch_data_tasks = await asyncio.wait(fetch_data_tasks, return_when=asyncio.FIRST_COMPLETED)
                     for task in done:
@@ -222,9 +246,13 @@ async def _fetch_data_to_replay(
                             http_proxy=http_proxy,
                             filters_hash=filters_hash,
                             compression=compression,
+                            cached_slices=replay_cached_slices,
+                            requested_slice_size=requested_slice_size,
+                            use_cache=True,
                         )
                     )
                 )
+                offset += requested_slice_size
 
             await asyncio.gather(*fetch_data_tasks)
         except BaseException:
@@ -247,8 +275,12 @@ async def _fetch_slice_if_not_cached(
     http_proxy: Optional[str],
     filters_hash: str,
     compression: ReplayCompression = "zstd",
-) -> None:
+    cached_slices: Optional[Dict[datetime, CachedSlice]] = None,
+    requested_slice_size: int = DEFAULT_DATA_FEED_SLICE_SIZE,
+    use_cache: bool = True,
+) -> SliceDownloadResult:
     slice_date = from_date + timedelta(minutes=offset)
+    replay_cached_slices = cached_slices if cached_slices is not None else {}
     cache_zstd_path = _get_slice_cache_path(
         cache_dir,
         exchange,
@@ -256,6 +288,7 @@ async def _fetch_slice_if_not_cached(
         filters,
         filters_hash=filters_hash,
         content_encoding="zstd",
+        slice_size=requested_slice_size,
     )
     cache_gzip_path = _get_slice_cache_path(
         cache_dir,
@@ -263,15 +296,26 @@ async def _fetch_slice_if_not_cached(
         slice_date,
         filters,
         filters_hash=filters_hash,
+        slice_size=requested_slice_size,
     )
 
-    if os.path.isfile(cache_zstd_path) or os.path.isfile(cache_gzip_path):
-        return
+    if use_cache:
+        cached_slice_path = (
+            cache_zstd_path
+            if os.path.isfile(cache_zstd_path)
+            else cache_gzip_path if os.path.isfile(cache_gzip_path) else None
+        )
+        if cached_slice_path is not None:
+            replay_cached_slices[slice_date] = CachedSlice(cached_slice_path, requested_slice_size)
+            return SliceDownloadResult(requested_slice_size, DEFAULT_DATA_FEED_SLICE_SIZE)
 
     fetch_url = (
         f"{endpoint}/data-feeds/{exchange}?from={_format_replay_query_date(from_date)}"
         f"&offset={offset}&compression={compression}"
     )
+    if requested_slice_size > DEFAULT_DATA_FEED_SLICE_SIZE:
+        fetch_url += f"&sliceSize={requested_slice_size}"
+
     if filters:
         filters_serialized = json_module.dumps(_serialize_normalized_filters(filters), separators=(",", ":"))
         filters_url_encoded = urllib.parse.quote(filters_serialized, safe="~()*!.'")
@@ -279,13 +323,18 @@ async def _fetch_slice_if_not_cached(
 
     cache_base_path = cache_gzip_path.removesuffix(".gz")
 
-    await reliable_download(
+    download_path, response_headers = await reliable_download(
         session=session,
         url=fetch_url,
         dest_path=cache_base_path,
         http_proxy=http_proxy,
         append_content_encoding_extension=True,
+        return_headers=True,
     )
+    response_slice_size = int(response_headers["x-slice-size"])
+    suggested_slice_size = int(response_headers.get("x-suggested-slice-size", DEFAULT_DATA_FEED_SLICE_SIZE))
+    replay_cached_slices[slice_date] = CachedSlice(download_path, response_slice_size)
+    return SliceDownloadResult(response_slice_size, suggested_slice_size)
 
 
 def _normalize_filters(filters: Optional[Sequence[Channel]]) -> Optional[List[Channel]]:
@@ -380,13 +429,15 @@ def _get_slice_cache_path(
     *,
     filters_hash: Optional[str] = None,
     content_encoding: Optional[str] = None,
+    slice_size: int = DEFAULT_DATA_FEED_SLICE_SIZE,
 ) -> str:
+    slice_size_suffix = "" if slice_size == DEFAULT_DATA_FEED_SLICE_SIZE else f".size-{slice_size}"
     return os.path.join(
         cache_dir,
         "feeds",
         exchange,
         filters_hash if filters_hash is not None else _get_filters_hash(filters),
-        f"{_format_date_to_path(date)}.json{'.zst' if content_encoding == 'zstd' else '.gz'}",
+        f"{_format_date_to_path(date)}{slice_size_suffix}.json{'.zst' if content_encoding == 'zstd' else '.gz'}",
     )
 
 
