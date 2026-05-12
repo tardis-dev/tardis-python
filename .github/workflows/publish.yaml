@@ -22,7 +22,7 @@ jobs:
         uses: astral-sh/setup-uv@v7
         with:
           version: "0.9.28"
-          enable-cache: true
+          enable-cache: false
 
       - name: Use Python 3.9
         uses: actions/setup-python@v6
