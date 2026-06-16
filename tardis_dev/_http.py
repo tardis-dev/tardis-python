@@ -82,7 +82,7 @@ def _is_non_retryable_download_error(exc: Exception) -> bool:
     if not isinstance(exc, urllib.error.HTTPError):
         return False
 
-    if exc.code == 401:
+    if exc.code in (401, 403, 404):
         return True
 
     return exc.code == 400 and "ISO 8601 format" not in exc.msg

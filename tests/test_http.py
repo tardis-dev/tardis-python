@@ -95,7 +95,8 @@ async def test_reliable_download_retries_iso_400_for_gz_with_retry_attempt_query
 
 
 @pytest.mark.asyncio
-async def test_reliable_download_does_not_retry_400(tmp_path: Path, monkeypatch):
+@pytest.mark.parametrize("status_code", [400, 401, 403, 404])
+async def test_reliable_download_does_not_retry_non_retryable_http_errors(tmp_path: Path, monkeypatch, status_code: int):
     destination = tmp_path / "slice.json.gz"
     url = "https://example.com/data"
 
@@ -105,13 +106,13 @@ async def test_reliable_download_does_not_retry_400(tmp_path: Path, monkeypatch)
     monkeypatch.setattr("tardis_dev._http.asyncio.sleep", no_sleep)
 
     with aioresponses() as mocked:
-        mocked.get(url, status=400, body="bad request")
+        mocked.get(url, status=status_code, body="non retryable")
 
         async with await create_session("", 5) as session:
             with pytest.raises(urllib.error.HTTPError) as exc_info:
                 await reliable_download(session, url, str(destination))
 
-    assert exc_info.value.code == 400
+    assert exc_info.value.code == status_code
     assert not destination.exists()
 
 
