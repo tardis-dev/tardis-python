@@ -36,7 +36,7 @@ async def test_find_instrument_symbols_async_selects_id_or_dataset_id():
         dataset_result = await find_instrument_symbols_async(["binance"], {"active": True}, selector="datasetId")
 
     assert id_result == [{"exchange": "binance", "symbols": ["btcusdt", "ethusdt"]}]
-    assert dataset_result == [{"exchange": "binance", "symbols": ["BTCUSDT", "ethusdt"]}]
+    assert dataset_result == [{"exchange": "binance", "symbols": ["BTCUSDT"]}]
 
 
 @pytest.mark.asyncio

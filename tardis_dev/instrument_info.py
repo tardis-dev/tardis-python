@@ -186,9 +186,14 @@ async def _find_instrument_symbols_for_exchange(
         http_proxy=http_proxy,
     )
 
+    if selector == "datasetId":
+        symbols = [instrument["datasetId"] for instrument in instruments if "datasetId" in instrument]
+    else:
+        symbols = [instrument["id"] for instrument in instruments]
+
     return {
         "exchange": exchange,
-        "symbols": [_get_symbol(instrument, selector) for instrument in instruments],
+        "symbols": symbols,
     }
 
 
@@ -230,10 +235,3 @@ def _get_instrument_info_url(
         return f"{url}?filter={encoded_filter}"
 
     return url
-
-
-def _get_symbol(instrument: Mapping[str, Any], selector: InstrumentSymbolSelector) -> str:
-    if selector == "datasetId":
-        return instrument.get("datasetId") or instrument["id"]
-
-    return instrument["id"]
