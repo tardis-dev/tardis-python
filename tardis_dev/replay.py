@@ -50,7 +50,7 @@ async def replay(
     api_key: str = "",
     cache_dir: str = DEFAULT_CACHE_DIR,
     endpoint: str = DEFAULT_ENDPOINT,
-    timeout: int = 60,
+    timeout: int = 135,
     http_proxy: Optional[str] = None,
     compression: ReplayCompression = "zstd",
     decode_response: bool = True,

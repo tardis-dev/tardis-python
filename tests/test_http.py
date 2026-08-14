@@ -1,6 +1,8 @@
+import asyncio
 import urllib.error
 from pathlib import Path
 
+import aiohttp
 import pytest
 from aioresponses import aioresponses
 
@@ -68,6 +70,37 @@ async def test_reliable_download_uses_node_backoff_for_500(tmp_path: Path, monke
 
     assert destination.read_bytes() == b"payload"
     assert delays == [4.0]
+
+
+@pytest.mark.asyncio
+async def test_reliable_download_does_not_cache_response_shorter_than_content_length(tmp_path: Path):
+    async def send_truncated_response(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
+        await reader.readuntil(b"\r\n\r\n")
+        writer.write(b"HTTP/1.1 200 OK\r\nContent-Encoding: zstd\r\nContent-Length: 10\r\nConnection: close\r\n\r\nabc")
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+
+    server = await asyncio.start_server(send_truncated_response, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    destination = tmp_path / "slice.json"
+
+    try:
+        async with await create_session("", 5) as session:
+            with pytest.raises(aiohttp.ClientPayloadError):
+                await reliable_download(
+                    session,
+                    f"http://127.0.0.1:{port}/data",
+                    str(destination),
+                    max_attempts=1,
+                    append_content_encoding_extension=True,
+                )
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    assert not destination.with_suffix(".json.zst").exists()
+    assert list(tmp_path.glob("*.unconfirmed")) == []
 
 
 @pytest.mark.asyncio

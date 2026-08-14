@@ -284,6 +284,7 @@ async def test_replay_accepts_naive_datetime_inputs_as_utc(monkeypatch, tmp_path
     assert len(results) == 1
     assert captured["from_date"] == datetime(2019, 5, 1, 0, 0, tzinfo=timezone.utc)
     assert captured["to_date"] == datetime(2019, 5, 1, 0, 1, tzinfo=timezone.utc)
+    assert captured["timeout"] == 135
 
 
 @pytest.mark.asyncio
