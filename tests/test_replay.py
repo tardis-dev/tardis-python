@@ -1,7 +1,9 @@
 import importlib
 import gzip
+import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import zstandard
@@ -11,6 +13,7 @@ from tardis_dev.replay import (
     CachedSlice,
     SliceDownloadResult,
     _fetch_data_to_replay,
+    _fetch_slice_if_not_cached,
     _format_replay_query_date,
     _get_filters_hash,
     _get_slice_cache_path,
@@ -401,6 +404,83 @@ async def test_replay_reads_zstd_cached_slice(monkeypatch, tmp_path: Path):
     assert len(results) == 1
     assert results[0] is not None
     assert results[0].message["table"] == "trade"
+
+
+@pytest.mark.asyncio
+async def test_replay_reads_every_zstd_frame_from_cached_multi_minute_slice(monkeypatch, tmp_path: Path):
+    cache_dir = tmp_path / "cache"
+    filters = _live_replay_filters()
+    slice_path = Path(
+        _get_slice_cache_path(
+            str(cache_dir),
+            LIVE_REPLAY_EXCHANGE,
+            datetime(2019, 5, 1, 0, 0),
+            filters,
+            content_encoding="zstd",
+            slice_size=2,
+        )
+    )
+    slice_path.parent.mkdir(parents=True, exist_ok=True)
+    compressor = zstandard.ZstdCompressor()
+    slice_path.write_bytes(
+        compressor.compress(b'2019-05-01T00:00:00.0000000Z {"sequence":1}\n')
+        + compressor.compress(b'2019-05-01T00:01:00.0000000Z {"sequence":2}\n')
+    )
+
+    async def fake_fetch_data_to_replay(**kwargs):
+        _cache_slice(kwargs["cached_slices"], datetime(2019, 5, 1, 0, 0, tzinfo=timezone.utc), slice_path, slice_size=2)
+
+    monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
+
+    results = []
+    async for item in replay(
+        exchange=LIVE_REPLAY_EXCHANGE,
+        from_date=LIVE_REPLAY_FROM,
+        to_date="2019-05-01T00:02:00.000Z",
+        filters=filters,
+        cache_dir=str(cache_dir),
+    ):
+        results.append(item)
+
+    assert [item.message["sequence"] for item in results if item is not None] == [1, 2]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("compression", "slice_size", "expected_compression"),
+    [
+        ("zstd", 1, "zstd-multiframe"),
+        ("zstd", 2, "zstd-multiframe"),
+        ("gzip", 1, "gzip"),
+        ("gzip", 2, "gzip"),
+    ],
+)
+async def test_fetch_slice_selects_compression_in_query_string(
+    monkeypatch, tmp_path: Path, compression, slice_size, expected_compression
+):
+    requests = []
+
+    async def fake_reliable_download(**kwargs):
+        requests.append(kwargs)
+        return str(tmp_path / "slice.zst"), {"x-slice-size": str(slice_size)}
+
+    monkeypatch.setattr(replay_module, "reliable_download", fake_reliable_download)
+    await _fetch_slice_if_not_cached(
+        session=SimpleNamespace(),
+        endpoint="https://api.tardis.dev/v1",
+        cache_dir=str(tmp_path),
+        exchange="bitmex",
+        from_date=datetime(2019, 6, 1),
+        offset=0,
+        filters=[Channel("trade")],
+        http_proxy=None,
+        filters_hash="hash",
+        compression=compression,
+        requested_slice_size=slice_size,
+        use_cache=False,
+    )
+
+    assert urllib.parse.parse_qs(urllib.parse.urlparse(requests[0]["url"]).query)["compression"] == [expected_compression]
 
 
 @pytest.mark.asyncio
