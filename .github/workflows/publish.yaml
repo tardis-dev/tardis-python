@@ -45,10 +45,10 @@ jobs:
           version: "0.9.28"
           enable-cache: false
 
-      - name: Use Python 3.9
+      - name: Use Python 3.10
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.9"
+          python-version: "3.10"
 
       - name: Update Package Version
         run: uv version "$RELEASE_VERSION"

@@ -1,9 +1,8 @@
 import importlib
-import re
+import json
 import urllib.error
 
 import pytest
-from aioresponses import aioresponses
 
 from tardis_dev import (
     find_instrument_symbols,
@@ -11,10 +10,9 @@ from tardis_dev import (
     get_instrument_info,
     get_instrument_info_async,
 )
+from tests.http_test_server import HttpResponse, serve_http
 
 instrument_info_module = importlib.import_module("tardis_dev.instrument_info")
-
-BINANCE_INSTRUMENTS_URL = re.compile(r"^https://api\.tardis\.dev/v1/instruments/binance\?filter=.*$")
 
 
 @pytest.mark.asyncio
@@ -28,12 +26,13 @@ async def test_get_instrument_info_async_rejects_ambiguous_arguments():
 
 @pytest.mark.asyncio
 async def test_find_instrument_symbols_async_selects_id_or_dataset_id():
-    with aioresponses() as mocked:
-        mocked.get(BINANCE_INSTRUMENTS_URL, payload=[{"id": "btcusdt", "datasetId": "BTCUSDT"}, {"id": "ethusdt"}])
-        mocked.get(BINANCE_INSTRUMENTS_URL, payload=[{"id": "btcusdt", "datasetId": "BTCUSDT"}, {"id": "ethusdt"}])
-
-        id_result = await find_instrument_symbols_async(["binance"], {"active": True})
-        dataset_result = await find_instrument_symbols_async(["binance"], {"active": True}, selector="datasetId")
+    body = json.dumps([{"id": "btcusdt", "datasetId": "BTCUSDT"}, {"id": "ethusdt"}]).encode()
+    async with serve_http([HttpResponse(body=body), HttpResponse(body=body)]) as (base_url, _):
+        endpoint = f"{base_url}/v1"
+        id_result = await find_instrument_symbols_async(["binance"], {"active": True}, endpoint=endpoint)
+        dataset_result = await find_instrument_symbols_async(
+            ["binance"], {"active": True}, selector="datasetId", endpoint=endpoint
+        )
 
     assert id_result == [{"exchange": "binance", "symbols": ["btcusdt", "ethusdt"]}]
     assert dataset_result == [{"exchange": "binance", "symbols": ["BTCUSDT"]}]
@@ -41,11 +40,9 @@ async def test_find_instrument_symbols_async_selects_id_or_dataset_id():
 
 @pytest.mark.asyncio
 async def test_find_instrument_symbols_async_raises_http_error_for_non_200():
-    with aioresponses() as mocked:
-        mocked.get(BINANCE_INSTRUMENTS_URL, status=401)
-
+    async with serve_http([HttpResponse(status=401)]) as (base_url, _):
         with pytest.raises(urllib.error.HTTPError) as exc_info:
-            await find_instrument_symbols_async(["binance"], {"active": True})
+            await find_instrument_symbols_async(["binance"], {"active": True}, endpoint=f"{base_url}/v1")
 
         assert exc_info.value.code == 401
 

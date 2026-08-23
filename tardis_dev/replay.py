@@ -18,7 +18,6 @@ from tardis_dev._http import create_session, reliable_download
 from tardis_dev._options import DEFAULT_CACHE_DIR, DEFAULT_ENDPOINT
 from tardis_dev.channel import Channel
 
-
 logger = logging.getLogger(__name__)
 
 DATE_MESSAGE_SPLIT_INDEX = 28

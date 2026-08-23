@@ -12,7 +12,6 @@ import dateutil.parser
 from tardis_dev._http import create_session, reliable_download
 from tardis_dev._options import DEFAULT_DATASETS_ENDPOINT
 
-
 logger = logging.getLogger(__name__)
 
 

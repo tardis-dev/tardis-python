@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Literal, Mapping, Optional, Sequence, TypedD
 from tardis_dev._http import create_session
 from tardis_dev._options import DEFAULT_ENDPOINT
 
-
 InstrumentInfo = Dict[str, Any]
 InstrumentInfoFilterValue = Union[str, Sequence[str]]
 

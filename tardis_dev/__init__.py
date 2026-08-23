@@ -1,6 +1,5 @@
 from importlib.metadata import PackageNotFoundError, version
 
-
 try:
     __version__ = version("tardis-dev")
 except PackageNotFoundError:
@@ -22,7 +21,6 @@ from tardis_dev.instrument_info import (
     get_instrument_info_async,
 )
 from tardis_dev.replay import Response, replay
-
 
 __all__ = [
     "__version__",
