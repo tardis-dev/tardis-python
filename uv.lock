@@ -3,7 +3,7 @@ revision = 3
 requires-python = ">=3.10, <4.0"
 
 [options]
-exclude-newer = "2026-08-16T18:05:30.545532Z"
+exclude-newer = "2026-08-16T18:11:05.107531941Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -831,7 +831,7 @@ wheels = [
 
 [[package]]
 name = "tardis-dev"
-version = "4.3.1"
+version = "5.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiofiles" },
