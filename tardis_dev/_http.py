@@ -25,7 +25,8 @@ async def create_session(api_key: str, timeout: int, accept_encoding: str = "gzi
 
     return aiohttp.ClientSession(
         auto_decompress=False,
-        timeout=aiohttp.ClientTimeout(total=timeout),
+        # Time out on silence, not on total duration, so slow-to-prepare slices and large downloads are not cut off.
+        timeout=aiohttp.ClientTimeout(total=None, sock_connect=timeout, sock_read=timeout),
         headers=headers,
         trust_env=True,
     )
