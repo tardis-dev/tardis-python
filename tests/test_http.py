@@ -132,7 +132,7 @@ async def test_reliable_download_does_not_retry_non_retryable_http_errors(tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_reliable_download_uses_429_delay(tmp_path: Path, monkeypatch):
+async def test_reliable_download_uses_429_delay_without_retry_after(tmp_path: Path, monkeypatch):
     destination = tmp_path / "slice.json.gz"
     delays = capture_retry_delays(monkeypatch)
 
@@ -145,6 +145,39 @@ async def test_reliable_download_uses_429_delay(tmp_path: Path, monkeypatch):
 
     assert destination.read_bytes() == b"payload"
     assert delays == [62.0]
+
+
+@pytest.mark.asyncio
+async def test_reliable_download_waits_for_429_retry_after(tmp_path: Path, monkeypatch):
+    destination = tmp_path / "slice.json.gz"
+    delays = capture_retry_delays(monkeypatch)
+
+    responses = [
+        HttpResponse(status=429, body=b"rate limited", headers={"Retry-After": "7"}),
+        HttpResponse(body=b"payload"),
+    ]
+    async with serve_http(responses) as (base_url, _):
+        async with await create_session("", 5) as session:
+            await reliable_download(session, f"{base_url}/data", str(destination))
+
+    assert destination.read_bytes() == b"payload"
+    assert delays == [7.0]
+
+
+@pytest.mark.asyncio
+async def test_reliable_download_does_not_retry_429_with_long_retry_after(tmp_path: Path, monkeypatch):
+    destination = tmp_path / "slice.json.gz"
+    capture_retry_delays(monkeypatch)
+
+    responses = [HttpResponse(status=429, body=b"transfer limit reached", headers={"Retry-After": "3600"})]
+    async with serve_http(responses) as (base_url, requests):
+        async with await create_session("", 5) as session:
+            with pytest.raises(urllib.error.HTTPError) as exc_info:
+                await reliable_download(session, f"{base_url}/data", str(destination))
+
+    assert exc_info.value.code == 429
+    assert exc_info.value.msg == "transfer limit reached"
+    assert requests == ["/data"]
 
 
 @pytest.mark.asyncio

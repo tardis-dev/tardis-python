@@ -85,6 +85,11 @@ def _is_non_retryable_download_error(exc: Exception) -> bool:
     if exc.code in (401, 403, 404):
         return True
 
+    if exc.code == 429:
+        # A Retry-After longer than a few minutes means an exhausted quota, so report it now instead of retrying.
+        retry_after = _get_retry_after_seconds(exc)
+        return retry_after is not None and retry_after > 300
+
     return exc.code == 400 and "ISO 8601 format" not in exc.msg
 
 
@@ -95,11 +100,20 @@ def _get_next_attempt_delay(exc: Exception, attempts: int) -> float:
 
     if isinstance(exc, urllib.error.HTTPError):
         if exc.code == 429:
+            retry_after = _get_retry_after_seconds(exc)
+            if retry_after is not None:
+                return retry_after + random.random()
             next_attempt_delay += 60
         elif exc.code == 500:
             next_attempt_delay *= 2
 
     return next_attempt_delay
+
+
+def _get_retry_after_seconds(exc: urllib.error.HTTPError) -> Optional[int]:
+    # The API sends Retry-After as whole seconds.
+    retry_after = exc.headers.get("Retry-After", "")
+    return int(retry_after) if retry_after.isdigit() else None
 
 
 async def _download(
@@ -114,7 +128,7 @@ async def _download(
     async with session.get(url, proxy=http_proxy) as response:
         if response.status != 200:
             error_text = await response.text()
-            raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=None, fp=None)
+            raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=response.headers, fp=None)
 
         headers = {key.lower(): value for key, value in response.headers.items()}
         final_path = dest_path
