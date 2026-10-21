@@ -13,6 +13,7 @@ jobs:
   build:
     name: Build And Test Package
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: read
 
@@ -75,6 +76,7 @@ jobs:
     name: Publish Package To PyPI
     needs: build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     environment: pypi
     permissions:
       id-token: write
@@ -99,6 +101,7 @@ jobs:
     name: Commit Package Version
     needs: publish
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
 
