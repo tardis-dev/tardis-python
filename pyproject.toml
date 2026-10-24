@@ -1,6 +1,6 @@
 [tool.black]
 line-length = 125
-target-version = ["py310"]
+target-version = ["py311"]
 
 [tool.pytest.ini_options]
 asyncio_default_fixture_loop_scope = "function"
@@ -13,7 +13,7 @@ name = "tardis-dev"
 version = "5.0.2"
 description = "Python client for tardis.dev - historical tick-level cryptocurrency market data replay API."
 readme = "README.md"
-requires-python = ">=3.10,<4.0"
+requires-python = ">=3.11,<4.0"
 license = "MPL-2.0"
 license-files = ["LICENSE"]
 authors = [

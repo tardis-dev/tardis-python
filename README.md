@@ -51,7 +51,7 @@ asyncio.run(main())
 
 ## Installation
 
-Requires Python 3.10+ installed.
+Requires Python 3.11+ installed.
 
 ```bash
 pip install tardis-dev
