@@ -1,19 +1,18 @@
 import importlib
 import gzip
-import urllib.parse
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 import zstandard
+from aiohttp import web
+from aiohttp.test_utils import TestServer
 
 from tardis_dev import Channel, replay
 from tardis_dev.replay import (
     CachedSlice,
     SliceDownloadResult,
     _fetch_data_to_replay,
-    _fetch_slice_if_not_cached,
     _format_replay_query_date,
     _get_filters_hash,
     _get_slice_cache_path,
@@ -447,41 +446,52 @@ async def test_replay_reads_every_zstd_frame_from_cached_multi_minute_slice(monk
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("compression", "slice_size", "expected_compression"),
-    [
-        ("zstd", 1, "zstd-multiframe"),
-        ("zstd", 2, "zstd-multiframe"),
-        ("gzip", 1, "gzip"),
-        ("gzip", 2, "gzip"),
-    ],
-)
-async def test_fetch_slice_selects_compression_in_query_string(
-    monkeypatch, tmp_path: Path, compression, slice_size, expected_compression
-):
+@pytest.mark.parametrize("compression", ["zstd", "gzip"])
+async def test_replay_negotiates_compression_using_accept_encoding(tmp_path: Path, compression):
     requests = []
 
-    async def fake_reliable_download(**kwargs):
-        requests.append(kwargs)
-        return str(tmp_path / "slice.zst"), {"x-slice-size": str(slice_size)}
+    async def handle(request):
+        requests.append((dict(request.query), request.headers.get("Accept-Encoding")))
+        offset = int(request.query["offset"])
+        slice_size = int(request.query.get("sliceSize", 1))
+        minutes = [
+            f'2019-05-01T00:0{minute}:00.0000000Z {{"sequence":{minute}}}\n'.encode()
+            for minute in range(offset, offset + slice_size)
+        ]
+        body = (
+            gzip.compress(b"".join(minutes))
+            if compression == "gzip"
+            else b"".join(zstandard.ZstdCompressor().compress(minute) for minute in minutes)
+        )
+        return web.Response(
+            body=body,
+            headers={"Content-Encoding": compression, "X-Slice-Size": str(slice_size), "X-Suggested-Slice-Size": "2"},
+        )
 
-    monkeypatch.setattr(replay_module, "reliable_download", fake_reliable_download)
-    await _fetch_slice_if_not_cached(
-        session=SimpleNamespace(),
-        endpoint="https://api.tardis.dev/v1",
-        cache_dir=str(tmp_path),
-        exchange="bitmex",
-        from_date=datetime(2019, 6, 1),
-        offset=0,
-        filters=[Channel("trade")],
-        http_proxy=None,
-        filters_hash="hash",
-        compression=compression,
-        requested_slice_size=slice_size,
-        use_cache=False,
-    )
+    app = web.Application()
+    app.router.add_get("/data-feeds/bitmex", handle)
+    async with TestServer(app) as server:
+        for attempt in range(2):
+            results = [
+                item
+                async for item in replay(
+                    exchange="bitmex",
+                    from_date=LIVE_REPLAY_FROM,
+                    to_date="2019-05-01T00:04:00.000Z",
+                    filters=_live_replay_filters(),
+                    endpoint=str(server.make_url("/")).rstrip("/"),
+                    cache_dir=str(tmp_path),
+                    compression=compression,
+                )
+            ]
+            assert [item.message["sequence"] for item in results if item is not None] == [0, 1, 2, 3]
+            assert len(requests) == (3 if attempt == 0 else 5)
 
-    assert urllib.parse.parse_qs(urllib.parse.urlparse(requests[0]["url"]).query)["compression"] == [expected_compression]
+    assert [query["offset"] for query, _ in requests[3:]] == ["3", "0"]
+    assert any(query.get("sliceSize") == "2" for query, _ in requests)
+    for query, encoding in requests:
+        assert "compression" not in query
+        assert encoding == ("gzip" if compression == "gzip" else "zstd, gzip")
 
 
 @pytest.mark.asyncio

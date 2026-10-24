@@ -193,7 +193,6 @@ async def _fetch_data_to_replay(
                 filters=filters,
                 http_proxy=http_proxy,
                 filters_hash=filters_hash,
-                compression=compression,
                 cached_slices=replay_cached_slices,
                 requested_slice_size=DEFAULT_DATA_FEED_SLICE_SIZE,
                 use_cache=False,
@@ -211,7 +210,6 @@ async def _fetch_data_to_replay(
                     filters=filters,
                     http_proxy=http_proxy,
                     filters_hash=filters_hash,
-                    compression=compression,
                     cached_slices=replay_cached_slices,
                     requested_slice_size=DEFAULT_DATA_FEED_SLICE_SIZE,
                     use_cache=False,
@@ -244,7 +242,6 @@ async def _fetch_data_to_replay(
                             filters=filters,
                             http_proxy=http_proxy,
                             filters_hash=filters_hash,
-                            compression=compression,
                             cached_slices=replay_cached_slices,
                             requested_slice_size=requested_slice_size,
                             use_cache=True,
@@ -273,7 +270,6 @@ async def _fetch_slice_if_not_cached(
     filters: Optional[Sequence[Channel]],
     http_proxy: Optional[str],
     filters_hash: str,
-    compression: ReplayCompression = "zstd",
     cached_slices: Optional[Dict[datetime, CachedSlice]] = None,
     requested_slice_size: int = DEFAULT_DATA_FEED_SLICE_SIZE,
     use_cache: bool = True,
@@ -308,11 +304,7 @@ async def _fetch_slice_if_not_cached(
             replay_cached_slices[slice_date] = CachedSlice(cached_slice_path, requested_slice_size)
             return SliceDownloadResult(requested_slice_size, DEFAULT_DATA_FEED_SLICE_SIZE)
 
-    request_compression = "zstd-multiframe" if compression == "zstd" else compression
-    fetch_url = (
-        f"{endpoint}/data-feeds/{exchange}?from={_format_replay_query_date(from_date)}"
-        f"&offset={offset}&compression={request_compression}"
-    )
+    fetch_url = f"{endpoint}/data-feeds/{exchange}?from={_format_replay_query_date(from_date)}&offset={offset}"
     if requested_slice_size > DEFAULT_DATA_FEED_SLICE_SIZE:
         fetch_url += f"&sliceSize={requested_slice_size}"
 
