@@ -9,7 +9,7 @@ from typing import Callable, Literal, Optional, Sequence
 
 import dateutil.parser
 
-from tardis_dev._http import create_session, reliable_download
+from tardis_dev._http import create_session, download_dataset_file
 from tardis_dev._options import DEFAULT_DATASETS_ENDPOINT
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ def download_datasets(
     concurrency: int = 20,
     get_filename: Callable[[str, str, datetime, str, str], str] = default_file_name,
     skip_if_exists: bool = True,
+    verify_md5: bool = False,
 ) -> None:
     try:
         asyncio.get_running_loop()
@@ -56,6 +57,7 @@ def download_datasets(
                 concurrency=concurrency,
                 get_filename=get_filename,
                 skip_if_exists=skip_if_exists,
+                verify_md5=verify_md5,
             )
         )
         return
@@ -81,6 +83,7 @@ async def download_datasets_async(
     concurrency: int = 20,
     get_filename: Callable[[str, str, datetime, str, str], str] = default_file_name,
     skip_if_exists: bool = True,
+    verify_md5: bool = False,
 ) -> None:
     if concurrency < 1:
         raise ValueError("Invalid 'concurrency' argument. Please provide value greater than 0.")
@@ -93,7 +96,10 @@ async def download_datasets_async(
             "Invalid 'from_date' and 'to_date' arguments combination. 'to_date' must be later than 'from_date'."
         )
 
-    async with await create_session(api_key, timeout) as session:
+    # One limit for all files and their ranges, so splitting files into ranges doesn't add connections.
+    request_slots = asyncio.Semaphore(concurrency)
+    # Storage redirects get their own session, so the API key is never sent to storage.
+    async with await create_session(api_key, timeout) as session, await create_session("", timeout) as storage_session:
         for symbol in symbols:
             normalized_symbol = _normalize_symbol(symbol)
 
@@ -111,6 +117,8 @@ async def download_datasets_async(
                 if days_count_to_fetch > 1:
                     await _download_dataset_if_needed(
                         session=session,
+                        storage_session=storage_session,
+                        request_slots=request_slots,
                         exchange=exchange,
                         data_type=data_type,
                         date=start_date + timedelta(days=days_count_to_fetch - 1),
@@ -121,10 +129,13 @@ async def download_datasets_async(
                         get_filename=get_filename,
                         skip_if_exists=skip_if_exists,
                         http_proxy=http_proxy,
+                        verify_md5=verify_md5,
                     )
 
                 await _download_dataset_if_needed(
                     session=session,
+                    storage_session=storage_session,
+                    request_slots=request_slots,
                     exchange=exchange,
                     data_type=data_type,
                     date=start_date,
@@ -135,6 +146,7 @@ async def download_datasets_async(
                     get_filename=get_filename,
                     skip_if_exists=skip_if_exists,
                     http_proxy=http_proxy,
+                    verify_md5=verify_md5,
                 )
 
                 download_tasks = set()
@@ -150,6 +162,8 @@ async def download_datasets_async(
                             asyncio.create_task(
                                 _download_dataset_if_needed(
                                     session=session,
+                                    storage_session=storage_session,
+                                    request_slots=request_slots,
                                     exchange=exchange,
                                     data_type=data_type,
                                     date=current_date,
@@ -160,6 +174,7 @@ async def download_datasets_async(
                                     get_filename=get_filename,
                                     skip_if_exists=skip_if_exists,
                                     http_proxy=http_proxy,
+                                    verify_md5=verify_md5,
                                 )
                             )
                         )
@@ -190,6 +205,8 @@ def _normalize_symbol(symbol: str) -> str:
 async def _download_dataset_if_needed(
     *,
     session,
+    storage_session,
+    request_slots: asyncio.Semaphore,
     exchange: str,
     data_type: str,
     date: datetime,
@@ -200,6 +217,7 @@ async def _download_dataset_if_needed(
     get_filename: Callable[[str, str, datetime, str, str], str],
     skip_if_exists: bool,
     http_proxy: Optional[str],
+    verify_md5: bool,
 ) -> None:
     url = (
         f"{endpoint}/{exchange}/{data_type}/{date.strftime('%Y/%m/%d')}/"
@@ -210,11 +228,14 @@ async def _download_dataset_if_needed(
     if skip_if_exists and os.path.exists(download_path):
         return
 
-    await reliable_download(
+    await download_dataset_file(
         session=session,
+        storage_session=storage_session,
         url=url,
         dest_path=download_path,
+        request_slots=request_slots,
         http_proxy=http_proxy,
+        verify_md5=verify_md5,
     )
 
 
