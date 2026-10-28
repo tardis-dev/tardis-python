@@ -298,7 +298,9 @@ async def test_download_datasets_async_fails_with_api_error_when_api_refuses_to_
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "exported_again_size", [2 * DATASET_RANGE_SIZE + 2000, DATASET_RANGE_SIZE + 1000], ids=["larger", "smaller"]
+    "exported_again_size",
+    [2 * DATASET_RANGE_SIZE + 2000, DATASET_RANGE_SIZE + 1000, 2 * DATASET_RANGE_SIZE + 1000],
+    ids=["larger", "smaller", "same-size"],
 )
 async def test_download_datasets_async_starts_over_when_dataset_is_exported_again_during_download(
     tmp_path: Path, exported_again_size: int
@@ -310,7 +312,8 @@ async def test_download_datasets_async_starts_over_when_dataset_is_exported_agai
     async def handle(request: web.Request) -> web.Response:
         nonlocal requests
         requests += 1
-        return _range_response(request, exported if requests == 1 else exported_again)
+        dataset = exported if requests == 1 else exported_again
+        return _range_response(request, dataset, {"x-md5": f'"{hashlib.md5(dataset).hexdigest()}"'})
 
     async with _serve(handle) as api_url:
         assert await _download_dataset_from(f"{api_url}/v1", tmp_path) == exported_again

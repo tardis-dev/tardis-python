@@ -247,7 +247,9 @@ async def _download_dataset_ranges(
     async def renew_storage_url(attempt_url: str, start: int):
         nonlocal storage_url, renewal
         try:
-            renewed_range = await _download_dataset_range(session, attempt_url, temp_path, start, http_proxy, dataset_size)
+            renewed_range = await _download_dataset_range(
+                session, attempt_url, temp_path, start, http_proxy, dataset_size, announced_md5
+            )
             _, storage_url, _ = renewed_range
             return renewed_range
         finally:
@@ -259,10 +261,14 @@ async def _download_dataset_ranges(
             # Read the URL only once the range has a slot, so a range that waited long uses the newest URL.
             range_url = storage_url
             if range_url is None:
-                return await _download_dataset_range(session, attempt_url, temp_path, start, http_proxy, dataset_size)
+                return await _download_dataset_range(
+                    session, attempt_url, temp_path, start, http_proxy, dataset_size, announced_md5
+                )
 
             try:
-                return await _download_dataset_range(storage_session, range_url, temp_path, start, http_proxy, dataset_size)
+                return await _download_dataset_range(
+                    storage_session, range_url, temp_path, start, http_proxy, dataset_size, announced_md5
+                )
             except urllib.error.HTTPError as exc:
                 if exc.code != 403:
                     raise
@@ -304,6 +310,7 @@ async def _download_dataset_range(
     start: int,
     http_proxy: Optional[str],
     expected_dataset_size: Optional[int] = None,
+    expected_md5: Optional[str] = None,
 ):
     end = start + DATASET_RANGE_SIZE - 1
     async with session.get(url, proxy=http_proxy, headers={"Range": f"bytes={start}-{end}"}) as response:
@@ -334,12 +341,17 @@ async def _download_dataset_range(
                     f"Dataset size changed from {expected_dataset_size} to {dataset_size} bytes during download"
                 )
 
+        # A dataset exported again with the same size announces another MD5.
+        md5 = _get_announced_md5(response.headers)
+        if expected_md5 is not None and md5 is not None and md5 != expected_md5:
+            raise _DatasetMismatchError(f"Dataset MD5 changed from {expected_md5} to {md5} during download")
+
         async with aiofiles.open(temp_path, "wb" if start == 0 else "r+b") as temp_file:
             await temp_file.seek(start)
             async for chunk in response.content.iter_any():
                 await temp_file.write(chunk)
 
-        return dataset_size, str(response.url) if response.history else None, _get_announced_md5(response.headers)
+        return dataset_size, str(response.url) if response.history else None, md5
 
 
 def _check_dataset_md5(temp_path: str, announced_md5: Optional[str], url: str):
