@@ -313,7 +313,9 @@ async def test_download_datasets_async_starts_over_when_dataset_is_exported_agai
         nonlocal requests
         requests += 1
         dataset = exported if requests == 1 else exported_again
-        return _range_response(request, dataset, {"x-md5": f'"{hashlib.md5(dataset).hexdigest()}"'})
+        # Only an export with the same size depends on the announced MD5; the others must start over on the size alone.
+        headers = {"x-md5": f'"{hashlib.md5(dataset).hexdigest()}"'} if exported_again_size == len(exported) else {}
+        return _range_response(request, dataset, headers)
 
     async with _serve(handle) as api_url:
         assert await _download_dataset_from(f"{api_url}/v1", tmp_path) == exported_again
