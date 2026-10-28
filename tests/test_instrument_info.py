@@ -85,7 +85,7 @@ async def test_find_instrument_symbols_async_rejects_invalid_selector():
 
 @pytest.mark.live
 @pytest.mark.asyncio
-async def test_get_instrument_info_async_returns_live_bitmex_metadata():
+async def test_get_instrument_info_async_returns_archived_bitmex_metadata():
     result = await get_instrument_info_async("bitmex", symbol="XBTUSD")
 
     assert result["id"] == "XBTUSD"
@@ -96,19 +96,19 @@ async def test_get_instrument_info_async_returns_live_bitmex_metadata():
     assert result["type"] == "perpetual"
     assert result["contractType"] == "inverse_perpetual"
     assert result["underlyingType"] == "native"
-    assert result["active"] is True
+    assert result["active"] is False
 
 
 @pytest.mark.live
 @pytest.mark.asyncio
-async def test_find_instrument_symbols_async_returns_live_bitmex_symbols():
+async def test_find_instrument_symbols_async_returns_archived_bitmex_symbols():
     filter_payload = {
         "baseCurrency": "BTC",
         "quoteCurrency": "USD",
         "type": "perpetual",
         "contractType": "inverse_perpetual",
         "underlyingType": "native",
-        "active": True,
+        "active": False,
     }
 
     assert await find_instrument_symbols_async(["bitmex"], filter_payload) == [{"exchange": "bitmex", "symbols": ["XBTUSD"]}]
