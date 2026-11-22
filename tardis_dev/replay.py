@@ -189,43 +189,36 @@ async def _fetch_data_to_replay(
     async with await create_session(api_key, timeout, "gzip" if compression == "gzip" else "zstd, gzip") as session:
         replay_cached_slices = cached_slices if cached_slices is not None else {}
         fetch_data_tasks = set()
-        try:
-            boundary_slices: Dict[datetime, CachedSlice] = {}
-            last_task = asyncio.create_task(
+
+        def start_slice_task(
+            offset: int,
+            *,
+            target_slices: Dict[datetime, CachedSlice],
+            requested_slice_size: int = DEFAULT_DATA_FEED_SLICE_SIZE,
+            use_cache: bool = True,
+        ) -> asyncio.Task:
+            return asyncio.create_task(
                 _fetch_slice_if_not_cached(
                     session=session,
                     endpoint=endpoint,
                     cache_dir=cache_dir,
                     exchange=exchange,
                     from_date=from_date,
-                    offset=minutes_diff - 1,
+                    offset=offset,
                     filters=filters,
                     http_proxy=http_proxy,
                     filters_hash=filters_hash,
-                    cached_slices=boundary_slices,
-                    requested_slice_size=DEFAULT_DATA_FEED_SLICE_SIZE,
-                    use_cache=False,
+                    cached_slices=target_slices,
+                    requested_slice_size=requested_slice_size,
+                    use_cache=use_cache,
                 )
             )
+
+        try:
+            boundary_slices: Dict[datetime, CachedSlice] = {}
+            last_task = start_slice_task(minutes_diff - 1, target_slices=boundary_slices, use_cache=False)
             first_task = (
-                last_task
-                if minutes_diff == 1
-                else asyncio.create_task(
-                    _fetch_slice_if_not_cached(
-                        session=session,
-                        endpoint=endpoint,
-                        cache_dir=cache_dir,
-                        exchange=exchange,
-                        from_date=from_date,
-                        offset=0,
-                        filters=filters,
-                        http_proxy=http_proxy,
-                        filters_hash=filters_hash,
-                        cached_slices=boundary_slices,
-                        requested_slice_size=DEFAULT_DATA_FEED_SLICE_SIZE,
-                        use_cache=False,
-                    )
-                )
+                last_task if minutes_diff == 1 else start_slice_task(0, target_slices=boundary_slices, use_cache=False)
             )
             fetch_data_tasks.update((last_task, first_task))
             last_slice = await last_task
@@ -250,21 +243,10 @@ async def _fetch_data_to_replay(
                     for task in done:
                         task.result()
 
-                task = asyncio.create_task(
-                    _fetch_slice_if_not_cached(
-                        session=session,
-                        endpoint=endpoint,
-                        cache_dir=cache_dir,
-                        exchange=exchange,
-                        from_date=from_date,
-                        offset=offset,
-                        filters=filters,
-                        http_proxy=http_proxy,
-                        filters_hash=filters_hash,
-                        cached_slices=replay_cached_slices,
-                        requested_slice_size=requested_slice_size,
-                        use_cache=True,
-                    )
+                task = start_slice_task(
+                    offset,
+                    target_slices=replay_cached_slices,
+                    requested_slice_size=requested_slice_size,
                 )
                 if slice_arrived is not None:
                     task.add_done_callback(lambda _: slice_arrived.set())
