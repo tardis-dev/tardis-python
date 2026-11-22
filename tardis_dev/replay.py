@@ -183,38 +183,49 @@ async def _fetch_data_to_replay(
         replay_cached_slices = cached_slices if cached_slices is not None else {}
         fetch_data_tasks = set()
         try:
-            last_slice = await _fetch_slice_if_not_cached(
-                session=session,
-                endpoint=endpoint,
-                cache_dir=cache_dir,
-                exchange=exchange,
-                from_date=from_date,
-                offset=minutes_diff - 1,
-                filters=filters,
-                http_proxy=http_proxy,
-                filters_hash=filters_hash,
-                cached_slices=replay_cached_slices,
-                requested_slice_size=DEFAULT_DATA_FEED_SLICE_SIZE,
-                use_cache=False,
-            )
-            first_slice = (
-                last_slice
-                if minutes_diff == 1
-                else await _fetch_slice_if_not_cached(
+            boundary_slices: Dict[datetime, CachedSlice] = {}
+            last_task = asyncio.create_task(
+                _fetch_slice_if_not_cached(
                     session=session,
                     endpoint=endpoint,
                     cache_dir=cache_dir,
                     exchange=exchange,
                     from_date=from_date,
-                    offset=0,
+                    offset=minutes_diff - 1,
                     filters=filters,
                     http_proxy=http_proxy,
                     filters_hash=filters_hash,
-                    cached_slices=replay_cached_slices,
+                    cached_slices=boundary_slices,
                     requested_slice_size=DEFAULT_DATA_FEED_SLICE_SIZE,
                     use_cache=False,
                 )
             )
+            first_task = (
+                last_task
+                if minutes_diff == 1
+                else asyncio.create_task(
+                    _fetch_slice_if_not_cached(
+                        session=session,
+                        endpoint=endpoint,
+                        cache_dir=cache_dir,
+                        exchange=exchange,
+                        from_date=from_date,
+                        offset=0,
+                        filters=filters,
+                        http_proxy=http_proxy,
+                        filters_hash=filters_hash,
+                        cached_slices=boundary_slices,
+                        requested_slice_size=DEFAULT_DATA_FEED_SLICE_SIZE,
+                        use_cache=False,
+                    )
+                )
+            )
+            fetch_data_tasks.update((last_task, first_task))
+            last_slice = await last_task
+            first_slice = await first_task
+            fetch_data_tasks.clear()
+            # Publish only after both boundary checks succeed so a denied range never yields partial data.
+            replay_cached_slices.update(boundary_slices)
 
             replay_slice_size = (
                 DEFAULT_DATA_FEED_SLICE_SIZE

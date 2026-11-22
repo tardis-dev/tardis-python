@@ -1,5 +1,7 @@
-import importlib
+import asyncio
 import gzip
+import importlib
+import urllib.error
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -487,11 +489,104 @@ async def test_replay_negotiates_compression_using_accept_encoding(tmp_path: Pat
             assert [item.message["sequence"] for item in results if item is not None] == [0, 1, 2, 3]
             assert len(requests) == (3 if attempt == 0 else 5)
 
-    assert [query["offset"] for query, _ in requests[3:]] == ["3", "0"]
+    assert sorted(query["offset"] for query, _ in requests[3:]) == ["0", "3"]
     assert any(query.get("sliceSize") == "2" for query, _ in requests)
     for query, encoding in requests:
         assert "compression" not in query
         assert encoding == ("gzip" if compression == "gzip" else "zstd, gzip")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_status", [200, 400])
+async def test_replay_overlaps_boundary_checks_without_yielding_before_last_passes(tmp_path: Path, first_status):
+    first_arrived = asyncio.Event()
+    last_arrived = asyncio.Event()
+
+    async def handle(request):
+        offset = request.query["offset"]
+        if offset == "0":
+            first_arrived.set()
+            if first_status == 200:
+                body = gzip.compress(b'2019-05-01T00:00:00.0000000Z {"sequence":0}\n')
+                return web.Response(
+                    body=body,
+                    headers={"Content-Encoding": "gzip", "X-Slice-Size": "1", "X-Suggested-Slice-Size": "1"},
+                )
+            return web.Response(status=400, text="first denied")
+
+        if offset == "2":
+            last_arrived.set()
+            # Wait for offset 0 so sequential boundary checks deadlock this test.
+            await asyncio.wait_for(first_arrived.wait(), timeout=2)
+            return web.Response(status=401, text="last denied")
+
+        raise AssertionError(f"unexpected offset {offset}")
+
+    app = web.Application()
+    app.router.add_get("/data-feeds/bitmex", handle)
+    async with TestServer(app) as server:
+        yielded = []
+
+        async def run_replay():
+            async for item in replay(
+                exchange="bitmex",
+                from_date=LIVE_REPLAY_FROM,
+                to_date="2019-05-01T00:03:00.000Z",
+                filters=_live_replay_filters(),
+                endpoint=str(server.make_url("/")).rstrip("/"),
+                cache_dir=str(tmp_path),
+                compression="gzip",
+            ):
+                yielded.append(item)
+
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            await asyncio.wait_for(run_replay(), timeout=5)
+
+    assert last_arrived.is_set()
+    assert first_arrived.is_set()
+    assert yielded == []
+    assert exc_info.value.code == 401
+    assert exc_info.value.msg == "last denied"
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_to_replay_cancels_first_slice_when_last_fails(monkeypatch):
+    first_cancelled = asyncio.Event()
+
+    async def fake_create_session(api_key: str, timeout: int, accept_encoding: str):
+        return _FakeSession()
+
+    async def fake_fetch_slice_if_not_cached(**kwargs):
+        if kwargs["offset"] == 2:
+            raise urllib.error.HTTPError("https://api.tardis.dev/v1/data-feeds/bitmex", 401, "last denied", {}, None)
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            first_cancelled.set()
+            raise
+
+    monkeypatch.setattr(replay_module, "create_session", fake_create_session)
+    monkeypatch.setattr(replay_module, "_fetch_slice_if_not_cached", fake_fetch_slice_if_not_cached)
+
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        await asyncio.wait_for(
+            _fetch_data_to_replay(
+                exchange="bitmex",
+                from_date=datetime(2019, 6, 1, 0, 0),
+                to_date=datetime(2019, 6, 1, 0, 3),
+                filters=[Channel("trade", ["BTCUSD"])],
+                endpoint="https://api.tardis.dev/v1",
+                cache_dir="/tmp/cache",
+                api_key="",
+                timeout=60,
+                http_proxy=None,
+                filters_hash="hash",
+            ),
+            timeout=2,
+        )
+
+    assert exc_info.value.code == 401
+    assert first_cancelled.is_set()
 
 
 @pytest.mark.asyncio
