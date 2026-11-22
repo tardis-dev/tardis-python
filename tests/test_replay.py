@@ -516,8 +516,10 @@ async def test_replay_overlaps_boundary_checks_without_yielding_before_last_pass
 
         if offset == "2":
             last_arrived.set()
-            # Wait for offset 0 so sequential boundary checks deadlock this test.
+            # Wait for offset 0 so sequential boundary checks fail instead of passing silently.
             await asyncio.wait_for(first_arrived.wait(), timeout=2)
+            if first_status == 200:
+                await asyncio.sleep(0.2)
             return web.Response(status=401, text="last denied")
 
         raise AssertionError(f"unexpected offset {offset}")
@@ -590,6 +592,48 @@ async def test_fetch_data_to_replay_cancels_first_slice_when_last_fails(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_fetch_data_to_replay_holds_first_slice_until_last_succeeds(monkeypatch):
+    first_completed = asyncio.Event()
+    shared_cached_slices = {}
+
+    async def fake_create_session(api_key: str, timeout: int, accept_encoding: str):
+        return _FakeSession()
+
+    async def fake_fetch_slice_if_not_cached(**kwargs):
+        if kwargs["offset"] == 0:
+            kwargs["cached_slices"][kwargs["from_date"]] = CachedSlice("/tmp/first.json.gz", 1)
+            first_completed.set()
+            return SliceDownloadResult(1, 1)
+
+        await asyncio.wait_for(first_completed.wait(), timeout=2)
+        raise urllib.error.HTTPError("https://api.tardis.dev/v1/data-feeds/bitmex", 401, "last denied", {}, None)
+
+    monkeypatch.setattr(replay_module, "create_session", fake_create_session)
+    monkeypatch.setattr(replay_module, "_fetch_slice_if_not_cached", fake_fetch_slice_if_not_cached)
+
+    with pytest.raises(urllib.error.HTTPError) as exc_info:
+        await asyncio.wait_for(
+            _fetch_data_to_replay(
+                exchange="bitmex",
+                from_date=datetime(2019, 6, 1, 0, 0),
+                to_date=datetime(2019, 6, 1, 0, 3),
+                filters=[Channel("trade", ["BTCUSD"])],
+                endpoint="https://api.tardis.dev/v1",
+                cache_dir="/tmp/cache",
+                api_key="",
+                timeout=60,
+                http_proxy=None,
+                filters_hash="hash",
+                cached_slices=shared_cached_slices,
+            ),
+            timeout=2,
+        )
+
+    assert exc_info.value.code == 401
+    assert shared_cached_slices == {}
+
+
+@pytest.mark.asyncio
 async def test_fetch_data_to_replay_prefetches_last_then_first(monkeypatch):
     calls = []
 
@@ -617,3 +661,63 @@ async def test_fetch_data_to_replay_prefetches_last_then_first(monkeypatch):
     )
 
     assert calls == [(5, 1, False), (0, 1, False), (1, 3, True), (4, 1, True)]
+
+
+@pytest.mark.asyncio
+async def test_replay_raises_when_fetch_finishes_without_expected_slice(monkeypatch, tmp_path: Path):
+    async def fake_fetch_data_to_replay(**kwargs):
+        return None
+
+    monkeypatch.setattr(replay_module, "_fetch_data_to_replay", fake_fetch_data_to_replay)
+
+    async def consume():
+        async for _ in replay(
+            exchange=LIVE_REPLAY_EXCHANGE,
+            from_date=LIVE_REPLAY_FROM,
+            to_date=LIVE_REPLAY_TO,
+            filters=_live_replay_filters(),
+            cache_dir=str(tmp_path),
+        ):
+            pass
+
+    with pytest.raises(RuntimeError, match="without slice"):
+        await asyncio.wait_for(consume(), timeout=1)
+
+
+@pytest.mark.asyncio
+async def test_replay_wakes_consumer_for_interior_slice_before_fetch_finishes(tmp_path: Path):
+    yielded_minute_one = asyncio.Event()
+
+    async def handle(request):
+        offset = int(request.query["offset"])
+        if offset == 2:
+            # Hold slice 2 until the consumer has already woken up and yielded interior slice 1.
+            await asyncio.wait_for(yielded_minute_one.wait(), timeout=2)
+        body = gzip.compress(f'2019-05-01T00:0{offset}:00.0000000Z {{"sequence":{offset}}}\n'.encode())
+        return web.Response(
+            body=body,
+            headers={"Content-Encoding": "gzip", "X-Slice-Size": "1", "X-Suggested-Slice-Size": "1"},
+        )
+
+    app = web.Application()
+    app.router.add_get("/data-feeds/bitmex", handle)
+    sequences = []
+    async with TestServer(app) as server:
+
+        async def run_replay():
+            async for item in replay(
+                exchange="bitmex",
+                from_date=LIVE_REPLAY_FROM,
+                to_date="2019-05-01T00:04:00.000Z",
+                filters=_live_replay_filters(),
+                endpoint=str(server.make_url("/")).rstrip("/"),
+                cache_dir=str(tmp_path),
+                compression="gzip",
+            ):
+                sequences.append(item.message["sequence"])
+                if item.message["sequence"] == 1:
+                    yielded_minute_one.set()
+
+        await asyncio.wait_for(run_replay(), timeout=5)
+
+    assert sequences == [0, 1, 2, 3]
