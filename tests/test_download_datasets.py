@@ -14,6 +14,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 
 from tardis_dev import default_file_name, download_datasets, download_datasets_async
+import tardis_dev._http as http_module
 from tests.test_http import capture_retry_delays
 
 download_datasets_module = importlib.import_module("tardis_dev.download_datasets")
@@ -23,7 +24,12 @@ LIVE_DATASET_TYPE = "trades"
 LIVE_DATASET_SYMBOL = "BTC-PERPETUAL"
 LIVE_DATASET_FROM = "2024-01-01"
 LIVE_DATASET_TO = "2024-01-02"
-DATASET_RANGE_SIZE = 64 * 1024 * 1024
+DATASET_RANGE_SIZE = 64 * 1024
+
+
+@pytest.fixture
+def small_dataset_ranges(monkeypatch):
+    monkeypatch.setattr(http_module, "DATASET_RANGE_SIZE", DATASET_RANGE_SIZE)
 
 
 class _FakeSession:
@@ -218,7 +224,7 @@ async def _download_dataset_from(endpoint: str, download_dir: Path, verify_md5: 
 
 
 @pytest.mark.asyncio
-async def test_download_datasets_async_downloads_large_dataset_in_byte_ranges(tmp_path: Path):
+async def test_download_datasets_async_downloads_large_dataset_in_byte_ranges(tmp_path: Path, small_dataset_ranges):
     dataset = os.urandom(2 * DATASET_RANGE_SIZE + 1000)
     ranges = []
 
@@ -240,8 +246,9 @@ async def test_download_datasets_async_downloads_large_dataset_in_byte_ranges(tm
 
 @pytest.mark.asyncio
 async def test_download_datasets_async_reuses_storage_redirect_and_renews_it_after_it_expires_past_failed_renewal(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch, small_dataset_ranges
 ):
+    capture_retry_delays(monkeypatch)
     dataset = os.urandom(2 * DATASET_RANGE_SIZE + 1000)
     api_authorizations = []
     storage_authorizations = []
@@ -270,7 +277,9 @@ async def test_download_datasets_async_reuses_storage_redirect_and_renews_it_aft
 
 
 @pytest.mark.asyncio
-async def test_download_datasets_async_fails_with_api_error_when_api_refuses_to_renew_expired_redirect(tmp_path: Path):
+async def test_download_datasets_async_fails_with_api_error_when_api_refuses_to_renew_expired_redirect(
+    tmp_path: Path, small_dataset_ranges
+):
     dataset = os.urandom(2 * DATASET_RANGE_SIZE + 1000)
     api_requests = 0
 
@@ -303,7 +312,7 @@ async def test_download_datasets_async_fails_with_api_error_when_api_refuses_to_
     ids=["larger", "smaller", "same-size"],
 )
 async def test_download_datasets_async_starts_over_when_dataset_is_exported_again_during_download(
-    tmp_path: Path, exported_again_size: int
+    tmp_path: Path, exported_again_size: int, small_dataset_ranges
 ):
     exported = os.urandom(2 * DATASET_RANGE_SIZE + 1000)
     exported_again = os.urandom(exported_again_size)
@@ -323,7 +332,7 @@ async def test_download_datasets_async_starts_over_when_dataset_is_exported_agai
 
 @pytest.mark.asyncio
 async def test_download_datasets_async_with_verify_md5_downloads_again_when_ranges_do_not_match_announced_md5(
-    tmp_path: Path,
+    tmp_path: Path, small_dataset_ranges
 ):
     dataset = os.urandom(DATASET_RANGE_SIZE + 1000)
     corrupted = dataset[:DATASET_RANGE_SIZE] + os.urandom(1000)
@@ -343,7 +352,9 @@ async def test_download_datasets_async_with_verify_md5_downloads_again_when_rang
 
 
 @pytest.mark.asyncio
-async def test_download_datasets_async_with_verify_md5_keeps_dataset_whose_storage_etag_is_multipart(tmp_path: Path):
+async def test_download_datasets_async_with_verify_md5_keeps_dataset_whose_storage_etag_is_multipart(
+    tmp_path: Path, small_dataset_ranges
+):
     requests = 0
 
     async def handle(request: web.Request) -> web.Response:
@@ -358,7 +369,9 @@ async def test_download_datasets_async_with_verify_md5_keeps_dataset_whose_stora
 
 
 @pytest.mark.asyncio
-async def test_download_datasets_async_waits_for_retry_after_when_a_range_is_rate_limited(tmp_path: Path, monkeypatch):
+async def test_download_datasets_async_waits_for_retry_after_when_a_range_is_rate_limited(
+    tmp_path: Path, monkeypatch, small_dataset_ranges
+):
     delays = capture_retry_delays(monkeypatch)
     dataset = os.urandom(DATASET_RANGE_SIZE + 1000)
     requests = []
