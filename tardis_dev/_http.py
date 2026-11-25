@@ -11,6 +11,7 @@ from typing import Optional
 
 import aiofiles
 import aiohttp
+from aiohttp.typedefs import StrOrURL
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,8 @@ async def create_session(api_key: str, timeout: int, accept_encoding: str = "gzi
 
     return aiohttp.ClientSession(
         auto_decompress=False,
+        # Preserve signed redirect targets verbatim so percent-encoded paths and signatures stay valid.
+        requote_redirect_url=False,
         # Time out on silence, not on total duration, so slow-to-prepare slices and large downloads are not cut off.
         timeout=aiohttp.ClientTimeout(total=None, sock_connect=timeout, sock_read=timeout),
         headers=headers,
@@ -305,7 +308,7 @@ async def _download_dataset_ranges(
 
 async def _download_dataset_range(
     session: aiohttp.ClientSession,
-    url: str,
+    url: StrOrURL,
     temp_path: str,
     start: int,
     http_proxy: Optional[str],
@@ -321,7 +324,7 @@ async def _download_dataset_range(
         # 200 means the storage ignored the range and sends the whole dataset.
         if response.status not in (200, 206):
             error_text = await response.text()
-            raise urllib.error.HTTPError(url, code=response.status, msg=error_text, hdrs=response.headers, fp=None)
+            raise urllib.error.HTTPError(str(url), code=response.status, msg=error_text, hdrs=response.headers, fp=None)
 
         dataset_size = None
         if response.status == 206:
@@ -351,7 +354,8 @@ async def _download_dataset_range(
             async for chunk in response.content.iter_any():
                 await temp_file.write(chunk)
 
-        return dataset_size, str(response.url) if response.history else None, md5
+        # Return the yarl.URL itself so reused storage ranges keep its original percent-encoding.
+        return dataset_size, response.url if response.history else None, md5
 
 
 def _check_dataset_md5(temp_path: str, announced_md5: Optional[str], url: str):

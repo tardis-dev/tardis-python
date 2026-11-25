@@ -393,3 +393,37 @@ async def test_download_datasets_async_waits_for_retry_after_when_a_range_is_rat
         f"{dataset_url}?retryAttempt=1 {second_range}",
     ]
     assert delays == [7.0]
+
+
+@pytest.mark.asyncio
+async def test_download_datasets_async_preserves_percent_encoded_redirect_url_across_ranges(
+    tmp_path: Path, small_dataset_ranges
+):
+    dataset = os.urandom(2 * DATASET_RANGE_SIZE + 1000)
+    signed_target = "/datasets.tardis.dev/v1/hyperliquid/trades/2026/11/01/%40107.csv.gz?AWSAccessKeyId=X&Expires=123&Signature=abc%2Bdef%2F%3D"
+    storage_raw_paths = []
+
+    async def handle_storage(request: web.Request) -> web.Response:
+        storage_raw_paths.append(request.raw_path)
+        if request.raw_path != signed_target:
+            return web.Response(status=403, text="SignatureDoesNotMatch")
+        return _range_response(request, dataset)
+
+    async with _serve(handle_storage) as storage_url:
+
+        async def handle_api(request: web.Request) -> web.Response:
+            return web.Response(status=302, headers={"Location": f"{storage_url}{signed_target}"})
+
+        async with _serve(handle_api) as api_url:
+            await download_datasets_async(
+                exchange="hyperliquid",
+                data_types=["trades"],
+                symbols=["@107"],
+                from_date="2026-11-01",
+                to_date="2026-11-02",
+                endpoint=f"{api_url}/v1",
+                download_dir=str(tmp_path),
+            )
+
+    assert (tmp_path / "hyperliquid_trades_2026-11-01_@107.csv.gz").read_bytes() == dataset
+    assert storage_raw_paths == [signed_target] * 3
